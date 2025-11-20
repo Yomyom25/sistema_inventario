@@ -2,31 +2,7 @@ import React, { useState, useEffect } from 'react';
 import FormularioProducto from './FormularioProducto';
 import './TablaProductos.css';
 
-// Datos de ejemplo mejorados - MOVIDOS FUERA del componente
-const productosEjemplo = [
-  {
-    id: 1,
-    codigo: 'PROD-001',
-    nombre: 'Laptop HP Pavilion',
-    descripcion: 'Laptop 15.6 pulgadas, 8GB RAM, 256GB SSD, Intel Core i5',
-    precioCompra: 12000,
-    precioVenta: 15000,
-    stock: 5,
-    tieneMovimientos: true,
-    categoria: 'Tecnología'
-  },
-  {
-    id: 2,
-    codigo: 'PROD-002',
-    nombre: 'Mouse Inalámbrico Logitech',
-    descripcion: 'Mouse óptico inalámbrico 2.4GHz, 3 botones, 1600 DPI',
-    precioCompra: 150,
-    precioVenta: 250,
-    stock: 1,
-    tieneMovimientos: false,
-    categoria: 'Accesorios'
-  }
-];
+const API_BASE_URL = 'http://localhost:3000/api';
 
 const TablaProductos = () => {
   const [productos, setProductos] = useState([]);
@@ -35,10 +11,51 @@ const TablaProductos = () => {
   const [productosPorPagina] = useState(8);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Cargar productos desde el backend
+  const cargarProductos = async () => {
+    try {
+      setCargando(true);
+      setError(null);
+      
+      const response = await fetch(`${API_BASE_URL}/productos`);
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Convertir datos del backend al formato del frontend
+        const productosConvertidos = data.data.map(producto => ({
+          id: producto.id_producto,
+          codigo: producto.codigo,
+          nombre: producto.nombre,
+          descripcion: producto.descripcion,
+          precioCompra: parseFloat(producto.precio_compra),
+          precioVenta: parseFloat(producto.precio_venta),
+          stock: producto.stock_actual,
+          tieneMovimientos: false, // Por defecto, se actualizará al intentar eliminar
+          categoria: 'General'
+        }));
+        setProductos(productosConvertidos);
+      } else {
+        throw new Error(data.error || 'Error al cargar productos');
+      }
+    } catch (error) {
+      console.error('Error cargando productos:', error);
+      setError(error.message);
+      setProductos([]); // Asegurar que no hay productos
+    } finally {
+      setCargando(false);
+    }
+  };
 
   useEffect(() => {
-    // Simular llamada a API
-    setProductos(productosEjemplo);
+    cargarProductos();
   }, []);
 
   // Filtrar productos por búsqueda
@@ -63,16 +80,45 @@ const TablaProductos = () => {
     setMostrarFormulario(true);
   };
 
-  const manejarEliminar = (producto) => {
+  const manejarEliminar = async (producto) => {
     if (producto.tieneMovimientos) {
       alert('❌ No se puede eliminar el producto porque tiene movimientos registrados');
       return;
     }
     
     if (window.confirm(`¿Estás seguro de eliminar el producto: ${producto.nombre}?`)) {
-      const productosActualizados = productos.filter(p => p.id !== producto.id);
-      setProductos(productosActualizados);
-      alert('✅ Producto eliminado correctamente');
+      try {
+        const response = await fetch(`${API_BASE_URL}/productos/${producto.id}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Eliminar del estado local
+          const productosActualizados = productos.filter(p => p.id !== producto.id);
+          setProductos(productosActualizados);
+          alert('✅ Producto eliminado correctamente');
+        } else {
+          // Si falla por movimientos, actualizar el producto
+          if (data.error && data.error.includes('movimientos')) {
+            const productosActualizados = productos.map(p => 
+              p.id === producto.id ? { ...p, tieneMovimientos: true } : p
+            );
+            setProductos(productosActualizados);
+            alert('❌ No se puede eliminar el producto porque tiene movimientos registrados');
+          } else {
+            throw new Error(data.error);
+          }
+        }
+      } catch (err) {
+        console.error('Error eliminando producto:', err);
+        alert(`❌ Error al eliminar producto: ${err.message}`);
+      }
     }
   };
 
@@ -81,34 +127,111 @@ const TablaProductos = () => {
     setMostrarFormulario(true);
   };
 
-  const manejarGuardarProducto = (producto) => {
-    if (productoEditando) {
-      // Editar producto existente
-      const productosActualizados = productos.map(p =>
-        p.id === producto.id ? producto : p
-      );
-      setProductos(productosActualizados);
-      alert('✅ Producto actualizado correctamente');
-    } else {
-      // Agregar nuevo producto
-      const nuevoProducto = {
-        ...producto,
-        id: Date.now(),
-        tieneMovimientos: false,
-        categoria: 'General'
+  const manejarGuardarProducto = async (productoData) => {
+    try {
+      // Preparar datos para el backend
+      const datosBackend = {
+        codigo: productoData.codigo,
+        nombre: productoData.nombre,
+        descripcion: productoData.descripcion,
+        precio_compra: productoData.precioCompra,
+        precio_venta: productoData.precioVenta,
+        stock_actual: productoData.stock || 1
       };
-      setProductos(prev => [nuevoProducto, ...prev]);
-      alert('✅ Producto creado correctamente');
+
+      let response;
+      let url;
+
+      if (productoEditando) {
+        // Editar producto existente
+        url = `${API_BASE_URL}/productos/${productoEditando.id}`;
+        response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(datosBackend)
+        });
+      } else {
+        // Crear nuevo producto
+        url = `${API_BASE_URL}/productos/nuevo`;
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(datosBackend)
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Recargar productos desde el backend
+        await cargarProductos();
+        alert('✅ Producto guardado correctamente');
+        setMostrarFormulario(false);
+        setProductoEditando(null);
+      } else {
+        const mensajeError = data.detalles ? data.detalles.join(', ') : data.error;
+        alert(`❌ Error: ${mensajeError}`);
+      }
+    } catch (err) {
+      console.error('Error guardando producto:', err);
+      alert(`❌ Error al guardar producto: ${err.message}`);
     }
-    
-    setMostrarFormulario(false);
-    setProductoEditando(null);
   };
 
   const manejarCancelarFormulario = () => {
     setMostrarFormulario(false);
     setProductoEditando(null);
   };
+
+  // Mostrar estado de carga
+  if (cargando) {
+    return (
+      <div className="tabla-productos-container">
+        <div className="productos-header">
+          <div className="header-info">
+            <h1>📦 Gestión de Productos</h1>
+            <p>Administra el inventario completo de la distribuidora</p>
+          </div>
+        </div>
+        <div className="sin-productos">
+          <div className="sin-productos-icon">⏳</div>
+          <h3>Cargando productos...</h3>
+          <p>Conectando con el servidor</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar error si no se pudo cargar
+  if (error) {
+    return (
+      <div className="tabla-productos-container">
+        <div className="productos-header">
+          <div className="header-info">
+            <h1>📦 Gestión de Productos</h1>
+            <p>Administra el inventario completo de la distribuidora</p>
+          </div>
+        </div>
+        <div className="sin-productos">
+          <div className="sin-productos-icon">❌</div>
+          <h3>Error de conexión</h3>
+          <p>{error}</p>
+          <p>Asegúrate de que el servidor backend esté ejecutándose en http://localhost:3000</p>
+          <button className="btn-nuevo-producto" onClick={cargarProductos}>
+            🔄 Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="tabla-productos-container">
