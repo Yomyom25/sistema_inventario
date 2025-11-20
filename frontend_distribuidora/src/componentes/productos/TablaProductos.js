@@ -29,7 +29,6 @@ const TablaProductos = () => {
       const data = await response.json();
       
       if (data.success) {
-        // Convertir datos del backend al formato del frontend
         const productosConvertidos = data.data.map(producto => ({
           id: producto.id_producto,
           codigo: producto.codigo,
@@ -38,7 +37,7 @@ const TablaProductos = () => {
           precioCompra: parseFloat(producto.precio_compra),
           precioVenta: parseFloat(producto.precio_venta),
           stock: producto.stock_actual,
-          tieneMovimientos: false, // Por defecto, se actualizará al intentar eliminar
+          tieneMovimientos: false,
           categoria: 'General'
         }));
         setProductos(productosConvertidos);
@@ -48,7 +47,7 @@ const TablaProductos = () => {
     } catch (error) {
       console.error('Error cargando productos:', error);
       setError(error.message);
-      setProductos([]); // Asegurar que no hay productos
+      setProductos([]);
     } finally {
       setCargando(false);
     }
@@ -81,11 +80,6 @@ const TablaProductos = () => {
   };
 
   const manejarEliminar = async (producto) => {
-    if (producto.tieneMovimientos) {
-      alert('❌ No se puede eliminar el producto porque tiene movimientos registrados');
-      return;
-    }
-    
     if (window.confirm(`¿Estás seguro de eliminar el producto: ${producto.nombre}?`)) {
       try {
         const response = await fetch(`${API_BASE_URL}/productos/${producto.id}`, {
@@ -99,17 +93,11 @@ const TablaProductos = () => {
         const data = await response.json();
 
         if (data.success) {
-          // Eliminar del estado local
           const productosActualizados = productos.filter(p => p.id !== producto.id);
           setProductos(productosActualizados);
           alert('✅ Producto eliminado correctamente');
         } else {
-          // Si falla por movimientos, actualizar el producto
           if (data.error && data.error.includes('movimientos')) {
-            const productosActualizados = productos.map(p => 
-              p.id === producto.id ? { ...p, tieneMovimientos: true } : p
-            );
-            setProductos(productosActualizados);
             alert('❌ No se puede eliminar el producto porque tiene movimientos registrados');
           } else {
             throw new Error(data.error);
@@ -129,7 +117,7 @@ const TablaProductos = () => {
 
   const manejarGuardarProducto = async (productoData) => {
     try {
-      // Preparar datos para el backend
+      // Preparar datos para el backend (convertir formato)
       const datosBackend = {
         codigo: productoData.codigo,
         nombre: productoData.nombre,
@@ -191,7 +179,6 @@ const TablaProductos = () => {
     setProductoEditando(null);
   };
 
-  // Mostrar estado de carga
   if (cargando) {
     return (
       <div className="tabla-productos-container">
@@ -210,7 +197,6 @@ const TablaProductos = () => {
     );
   }
 
-  // Mostrar error si no se pudo cargar
   if (error) {
     return (
       <div className="tabla-productos-container">
@@ -235,7 +221,6 @@ const TablaProductos = () => {
 
   return (
     <div className="tabla-productos-container">
-      {/* Mostrar formulario o tabla */}
       {mostrarFormulario ? (
         <FormularioProducto
           productoEditar={productoEditando}
@@ -245,7 +230,6 @@ const TablaProductos = () => {
         />
       ) : (
         <>
-          {/* Header con título */}
           <div className="productos-header">
             <div className="header-info">
               <h1>📦 Gestión de Productos</h1>
@@ -259,7 +243,6 @@ const TablaProductos = () => {
             </div>
           </div>
 
-          {/* Barra de herramientas */}
           <div className="herramientas-productos">
             <div className="busqueda-container">
               <div className="busqueda-wrapper">
@@ -285,7 +268,6 @@ const TablaProductos = () => {
             </button>
           </div>
 
-          {/* Tabla de productos */}
           <div className="tabla-container">
             <table className="tabla-productos">
               <thead>
@@ -334,10 +316,9 @@ const TablaProductos = () => {
                         ✏️ Editar
                       </button>
                       <button 
-                        className={`btn-eliminar ${producto.tieneMovimientos ? 'deshabilitado' : ''}`}
+                        className="btn-eliminar"
                         onClick={() => manejarEliminar(producto)}
-                        disabled={producto.tieneMovimientos}
-                        title={producto.tieneMovimientos ? 'No se puede eliminar - tiene movimientos' : 'Eliminar producto'}
+                        title="Eliminar producto"
                       >
                         🗑️ Eliminar
                       </button>
@@ -347,7 +328,6 @@ const TablaProductos = () => {
               </tbody>
             </table>
 
-            {/* Mensaje si no hay productos */}
             {productosPagina.length === 0 && (
               <div className="sin-productos">
                 <div className="sin-productos-icon">📦</div>
@@ -362,7 +342,6 @@ const TablaProductos = () => {
             )}
           </div>
 
-          {/* Paginación */}
           {totalPaginas > 1 && (
             <div className="paginacion">
               <button 

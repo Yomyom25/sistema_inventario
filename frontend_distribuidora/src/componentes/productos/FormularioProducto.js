@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './FormularioProducto.css';
 
+
 const FormularioProducto = ({ productoEditar, onGuardar, onCancelar, productosExistentes }) => {
   const [formData, setFormData] = useState({
     codigo: '',
@@ -14,7 +15,7 @@ const FormularioProducto = ({ productoEditar, onGuardar, onCancelar, productosEx
   const [errores, setErrores] = useState({});
   const [enviando, setEnviando] = useState(false);
 
-  // Si estamos editando, cargar los datos del producto
+  // Cargar datos del producto si estamos editando
   useEffect(() => {
     if (productoEditar) {
       setFormData({
@@ -50,11 +51,6 @@ const FormularioProducto = ({ productoEditar, onGuardar, onCancelar, productosEx
     // Validar campos obligatorios
     if (!formData.codigo.trim()) {
       nuevosErrores.codigo = 'El código es obligatorio';
-    } else if (productosExistentes.some(p => 
-      p.codigo === formData.codigo && 
-      (!productoEditar || p.id !== productoEditar.id)
-    )) {
-      nuevosErrores.codigo = 'Este código ya está en uso';
     }
 
     if (!formData.nombre.trim()) {
@@ -101,37 +97,21 @@ const FormularioProducto = ({ productoEditar, onGuardar, onCancelar, productosEx
     setEnviando(true);
 
     try {
-      // Simular llamada a API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const producto = {
-        id: productoEditar ? productoEditar.id : Date.now(),
+      // Preparar datos para el backend (formato correcto)
+      const productoData = {
         codigo: formData.codigo.trim(),
         nombre: formData.nombre.trim(),
         descripcion: formData.descripcion.trim(),
         precioCompra: parseFloat(formData.precioCompra),
         precioVenta: parseFloat(formData.precioVenta),
-        stock: parseInt(formData.stock),
-        tieneMovimientos: productoEditar ? productoEditar.tieneMovimientos : false,
-        categoria: 'General'
+        stock: parseInt(formData.stock)
       };
 
-      onGuardar(producto);
-      
-      // Limpiar formulario si es nuevo producto
-      if (!productoEditar) {
-        setFormData({
-          codigo: '',
-          nombre: '',
-          descripcion: '',
-          precioCompra: '',
-          precioVenta: '',
-          stock: '1'
-        });
-      }
+      // Llamar a la función onGuardar que se conecta con el backend
+      await onGuardar(productoData);
       
     } catch (error) {
-      console.error('Error al guardar producto:', error);
+      console.error('Error en el formulario:', error);
     } finally {
       setEnviando(false);
     }
