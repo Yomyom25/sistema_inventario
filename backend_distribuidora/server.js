@@ -1,15 +1,30 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const session = require('express-session');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
-// Middleware básico
-app.use(cors());
+// Middleware
+app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true
+}));
 app.use(express.json());
 
-// Configuración de la conexión a la base de datos XAMPP
+// Configuración de sesiones
+app.use(session({
+    secret: 'distribuidora_martin_secret_2025',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false,
+        maxAge: 24 * 60 * 60 * 1000
+    }
+}));
+
+// Configuración de la base de datos
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
@@ -27,6 +42,412 @@ db.connect((err) => {
     console.log('Conectado a la base de datos MySQL - Distribuidora Martin');
 });
 
+// =============================================
+// MIDDLEWARE DE AUTENTICACIÓN
+// =============================================
+
+const requireAuth = (req, res, next) => {
+    if (req.session.user) {
+        next();
+    } else {
+        res.status(401).json({
+            success: false,
+            error: 'No autenticado'
+        });
+    }
+};
+
+// =============================================
+// ENDPOINTS DE AUTENTICACIÓN
+// =============================================
+
+// Login de usuario
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({
+            success: false,
+            error: 'Usuario y contraseña son requeridos'
+        });
+    }
+
+    const sql = 'SELECT * FROM usuarios WHERE nombre_usuario = ? AND estado = "activo"';
+
+    db.query(sql, [username], (err, results) => {
+        if (err) {
+            console.error('Error al buscar usuario:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error del servidor'
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(401).json({
+                success: false,
+                error: 'Usuario no encontrado o inactivo'
+            });
+        }
+
+        const user = results[0];
+
+        // COMPARACIÓN DIRECTA SIN HASH
+        if (password !== user.contraseña) {
+            return res.status(401).json({
+                success: false,
+                error: 'Contraseña incorrecta'
+            });
+        }
+
+        req.session.user = {
+            id: user.id_usuario,
+            username: user.nombre_usuario,
+            role: user.rol,
+            name: user.nombre_usuario
+        };
+
+        res.json({
+            success: true,
+            message: 'Login exitoso',
+            user: req.session.user
+        });
+    });
+});
+
+// Verificar sesión
+app.get('/api/auth/verify', (req, res) => {
+    if (req.session.user) {
+        res.json({
+            success: true,
+            user: req.session.user
+        });
+    } else {
+        res.status(401).json({
+            success: false,
+            error: 'No autenticado'
+        });
+    }
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                error: 'Error al cerrar sesión'
+            });
+        }
+
+        res.clearCookie('connect.sid');
+        res.json({
+            success: true,
+            message: 'Logout exitoso'
+        });
+    });
+});
+
+// Obtener datos del usuario actual
+app.get('/api/auth/me', requireAuth, (req, res) => {
+    res.json({
+        success: true,
+        user: req.session.user
+    });
+});
+
+// =============================================
+// ENDPOINTS DE PRODUCTOS (PROTEGIDOS)
+// =============================================
+
+// Obtener todos los productos
+app.get('/api/productos', requireAuth, (req, res) => {
+    const { search } = req.query;
+    let sql = 'SELECT * FROM productos';
+    let params = [];
+
+    if (search) {
+        sql += ' WHERE codigo LIKE ? OR nombre LIKE ?';
+        params.push(`%${search}%`, `%${search}%`);
+    }
+
+    sql += ' ORDER BY fecha_creacion DESC';
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error('Error al obtener productos:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al obtener productos'
+            });
+        }
+        res.json({
+            success: true,
+            data: results,
+            total: results.length
+        });
+    });
+});
+
+// Obtener un producto por ID
+app.get('/api/productos/:id', requireAuth, (req, res) => {
+    const { id } = req.params;
+    const sql = 'SELECT * FROM productos WHERE id_producto = ?';
+
+    db.query(sql, [id], (err, results) => {
+        if (err) {
+            console.error('Error al obtener producto:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al obtener producto'
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Producto no encontrado'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: results[0]
+        });
+    });
+});
+
+// Validar si un código ya existe
+app.get('/api/productos/validar-codigo/:codigo', requireAuth, (req, res) => {
+    const { codigo } = req.params;
+    const sql = 'SELECT COUNT(*) as count FROM productos WHERE codigo = ?';
+
+    db.query(sql, [codigo], (err, results) => {
+        if (err) {
+            console.error('Error al validar código:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al validar código'
+            });
+        }
+
+        const existe = results[0].count > 0;
+        res.json({
+            success: true,
+            existe: existe,
+            mensaje: existe ? 'El código ya está en uso' : 'Código disponible'
+        });
+    });
+});
+
+// Crear un nuevo producto
+app.post('/api/productos/nuevo', requireAuth, (req, res) => {
+    const {
+        codigo,
+        nombre,
+        descripcion,
+        precio_compra,
+        precio_venta,
+        stock_actual = 1
+    } = req.body;
+
+    const errores = [];
+
+    if (!codigo || codigo.trim() === '') {
+        errores.push('El código del producto es obligatorio');
+    }
+
+    if (!nombre || nombre.trim() === '') {
+        errores.push('El nombre del producto es obligatorio');
+    }
+
+    if (!descripcion || descripcion.trim() === '') {
+        errores.push('La descripción del producto es obligatoria');
+    }
+
+    if (!precio_compra || precio_compra <= 0) {
+        errores.push('El precio de compra debe ser mayor a 0');
+    }
+
+    if (!precio_venta || precio_venta <= 0) {
+        errores.push('El precio de venta debe ser mayor a 0');
+    }
+
+    if (stock_actual === undefined || stock_actual < 0) {
+        errores.push('El stock inicial debe ser al menos 0');
+    }
+
+    if (parseFloat(precio_venta) <= parseFloat(precio_compra)) {
+        errores.push('El precio de venta debe ser mayor al precio de compra');
+    }
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Errores de validación',
+            detalles: errores
+        });
+    }
+
+    const checkSql = 'SELECT COUNT(*) as count FROM productos WHERE codigo = ?';
+
+    db.query(checkSql, [codigo], (err, checkResults) => {
+        if (err) {
+            console.error('Error al verificar código:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al verificar código del producto'
+            });
+        }
+
+        if (checkResults[0].count > 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'El código del producto ya existe',
+                detalles: ['Por favor, utiliza un código único para el producto']
+            });
+        }
+
+        const insertSql = `INSERT INTO productos 
+            (codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual, fecha_creacion) 
+            VALUES (?, ?, ?, ?, ?, ?, NOW())`;
+
+        db.query(insertSql, [codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual], (err, results) => {
+            if (err) {
+                console.error('Error al crear producto:', err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Error al crear producto'
+                });
+            }
+
+            const selectSql = 'SELECT * FROM productos WHERE id_producto = ?';
+            db.query(selectSql, [results.insertId], (err, productResults) => {
+                if (err) {
+                    console.error('Error al obtener producto creado:', err);
+                    return res.status(201).json({
+                        success: true,
+                        message: 'Producto creado exitosamente',
+                        id_producto: results.insertId
+                    });
+                }
+
+                res.status(201).json({
+                    success: true,
+                    message: 'Producto creado exitosamente',
+                    data: productResults[0],
+                    id_producto: results.insertId
+                });
+            });
+        });
+    });
+});
+
+// Búsqueda de productos
+app.get('/api/productos/buscar/:termino', requireAuth, (req, res) => {
+    const { termino } = req.params;
+    const sql = 'SELECT * FROM productos WHERE codigo LIKE ? OR nombre LIKE ? OR descripcion LIKE ? ORDER BY nombre';
+    const searchTerm = `%${termino}%`;
+
+    db.query(sql, [searchTerm, searchTerm, searchTerm], (err, results) => {
+        if (err) {
+            console.error('Error en búsqueda:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error en la búsqueda'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: results,
+            total: results.length,
+            termino: termino
+        });
+    });
+});
+
+// Actualizar un producto
+app.put('/api/productos/:id', requireAuth, (req, res) => {
+    const { id } = req.params;
+    const { codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual } = req.body;
+
+    const sql = `UPDATE productos 
+              SET codigo = ?, nombre = ?, descripcion = ?, precio_compra = ?, 
+                  precio_venta = ?, stock_actual = ?, fecha_actualizacion = NOW() 
+              WHERE id_producto = ?`;
+
+    db.query(sql, [codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual, id], (err, results) => {
+        if (err) {
+            console.error('Error al actualizar producto:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al actualizar producto'
+            });
+        }
+
+        if (results.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Producto no encontrado'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Producto actualizado exitosamente',
+            id_producto: parseInt(id)
+        });
+    });
+});
+
+// Eliminar un producto
+app.delete('/api/productos/:id', requireAuth, (req, res) => {
+    const { id } = req.params;
+
+    const checkMovimientosSql = 'SELECT COUNT(*) as count FROM movimientos WHERE id_producto = ?';
+
+    db.query(checkMovimientosSql, [id], (err, movimientosResults) => {
+        if (err) {
+            console.error('Error al verificar movimientos:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Error al verificar movimientos del producto'
+            });
+        }
+
+        if (movimientosResults[0].count > 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No se puede eliminar el producto porque tiene movimientos registrados'
+            });
+        }
+
+        const deleteSql = 'DELETE FROM productos WHERE id_producto = ?';
+
+        db.query(deleteSql, [id], (err, results) => {
+            if (err) {
+                console.error('Error al eliminar producto:', err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Error al eliminar producto'
+                });
+            }
+
+            if (results.affectedRows === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Producto no encontrado'
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'Producto eliminado exitosamente'
+            });
+        });
+    });
+});
 
 // Ruta de prueba para verificar la conexión
 app.get('/api/test-db', (req, res) => {
@@ -39,317 +460,25 @@ app.get('/api/test-db', (req, res) => {
     });
 });
 
-// Obtener todos los productos (adaptado a tu BD real)
-app.get('/api/productos', (req, res) => {
-    const { search } = req.query;
-    let sql = 'SELECT * FROM productos';
-    let params = [];
-
-    if (search) {
-        sql += ' WHERE codigo LIKE ? OR nombre LIKE ?';
-        params.push(`%${search}%`, `%${search}%`);
-    }
-
-    sql += ' ORDER BY fecha_creacion DESC';
-    
-    db.query(sql, params, (err, results) => {
-        if (err) {
-            console.error('Error al obtener productos:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al obtener productos' 
-            });
-        }
-        res.json({
-            success: true,
-            data: results,
-            total: results.length
-        });
-    });
-});
-
-// Obtener un producto por ID
-app.get('/api/productos/:id', (req, res) => {
-    const { id } = req.params;
-    const sql = 'SELECT * FROM productos WHERE id_producto = ?';
-    
-    db.query(sql, [id], (err, results) => {
-        if (err) {
-            console.error('Error al obtener producto:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al obtener producto' 
-            });
-        }
-        
-        if (results.length === 0) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Producto no encontrado' 
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: results[0]
-        });
-    });
-});
-
-
-// Validar si un código ya existe
-app.get('/api/productos/validar-codigo/:codigo', (req, res) => {
-    const { codigo } = req.params;
-    const sql = 'SELECT COUNT(*) as count FROM productos WHERE codigo = ?';
-    
-    db.query(sql, [codigo], (err, results) => {
-        if (err) {
-            console.error('Error al validar código:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al validar código' 
-            });
-        }
-        
-        const existe = results[0].count > 0;
-        res.json({
-            success: true,
-            existe: existe,
-            mensaje: existe ? 'El código ya está en uso' : 'Código disponible'
-        });
-    });
-});
-
-// Crear un nuevo producto - VERSIÓN MEJORADA CON VALIDACIONES
-app.post('/api/productos/nuevo', (req, res) => {
-    const { 
-        codigo, 
-        nombre, 
-        descripcion, 
-        precio_compra, 
-        precio_venta, 
-        stock_actual = 1  // Valor por defecto según requerimiento
-    } = req.body;
-    
-    // Validaciones completas
-    const errores = [];
-    
-    if (!codigo || codigo.trim() === '') {
-        errores.push('El código del producto es obligatorio');
-    }
-    
-    if (!nombre || nombre.trim() === '') {
-        errores.push('El nombre del producto es obligatorio');
-    }
-    
-    if (!descripcion || descripcion.trim() === '') {
-        errores.push('La descripción del producto es obligatoria');
-    }
-    
-    if (!precio_compra || precio_compra <= 0) {
-        errores.push('El precio de compra debe ser mayor a 0');
-    }
-    
-    if (!precio_venta || precio_venta <= 0) {
-        errores.push('El precio de venta debe ser mayor a 0');
-    }
-    
-    if (stock_actual === undefined || stock_actual < 0) {
-        errores.push('El stock inicial debe ser al menos 0');
-    }
-    
-    if (parseFloat(precio_venta) <= parseFloat(precio_compra)) {
-        errores.push('El precio de venta debe ser mayor al precio de compra');
-    }
-    
-    if (errores.length > 0) {
-        return res.status(400).json({ 
-            success: false,
-            error: 'Errores de validación',
-            detalles: errores
-        });
-    }
-    
-    // Primero verificar si el código ya existe
-    const checkSql = 'SELECT COUNT(*) as count FROM productos WHERE codigo = ?';
-    
-    db.query(checkSql, [codigo], (err, checkResults) => {
-        if (err) {
-            console.error('Error al verificar código:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al verificar código del producto' 
-            });
-        }
-        
-        if (checkResults[0].count > 0) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'El código del producto ya existe',
-                detalles: ['Por favor, utiliza un código único para el producto']
-            });
-        }
-        
-        // Si pasa todas las validaciones, crear el producto
-        const insertSql = `INSERT INTO productos 
-                (codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual, fecha_creacion) 
-                VALUES (?, ?, ?, ?, ?, ?, NOW())`;
-        
-        db.query(insertSql, [codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual], (err, results) => {
-            if (err) {
-                console.error('Error al crear producto:', err);
-                return res.status(500).json({ 
-                    success: false,
-                    error: 'Error al crear producto' 
-                });
-            }
-            
-            // Obtener el producto recién creado para devolverlo
-            const selectSql = 'SELECT * FROM productos WHERE id_producto = ?';
-            db.query(selectSql, [results.insertId], (err, productResults) => {
-                if (err) {
-                    console.error('Error al obtener producto creado:', err);
-                    // Aún así devolvemos éxito porque el producto se creó
-                    return res.status(201).json({
-                        success: true,
-                        message: 'Producto creado exitosamente',
-                        id_producto: results.insertId
-                    });
-                }
-                
-                res.status(201).json({
-                    success: true,
-                    message: 'Producto creado exitosamente',
-                    data: productResults[0],
-                    id_producto: results.insertId
-                });
-            });
-        });
-    });
-});
-
-// Endpoint para búsqueda específica (para el campo de búsqueda del frontend)
-app.get('/api/productos/buscar/:termino', (req, res) => {
-    const { termino } = req.params;
-    const sql = 'SELECT * FROM productos WHERE codigo LIKE ? OR nombre LIKE ? OR descripcion LIKE ? ORDER BY nombre';
-    const searchTerm = `%${termino}%`;
-    
-    db.query(sql, [searchTerm, searchTerm, searchTerm], (err, results) => {
-        if (err) {
-            console.error('Error en búsqueda:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error en la búsqueda' 
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: results,
-            total: results.length,
-            termino: termino
-        });
-    });
-});
-
-
-// Actualizar un producto existente
-app.put('/api/productos/:id', (req, res) => {
-    const { id } = req.params;
-    const { codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual } = req.body;
-    
-    const sql = `UPDATE productos 
-                SET codigo = ?, nombre = ?, descripcion = ?, precio_compra = ?, 
-                    precio_venta = ?, stock_actual = ?, fecha_actualizacion = NOW() 
-                WHERE id_producto = ?`;
-    
-    db.query(sql, [codigo, nombre, descripcion, precio_compra, precio_venta, stock_actual, id], (err, results) => {
-        if (err) {
-            console.error('Error al actualizar producto:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al actualizar producto' 
-            });
-        }
-        
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ 
-                success: false,
-                error: 'Producto no encontrado' 
-            });
-        }
-        
-        res.json({
-            success: true,
-            message: 'Producto actualizado exitosamente',
-            id_producto: parseInt(id)
-        });
-    });
-});
-
-// Eliminar un producto
-app.delete('/api/productos/:id', (req, res) => {
-    const { id } = req.params;
-    
-    // Primero verificar si el producto tiene movimientos
-    const checkMovimientosSql = 'SELECT COUNT(*) as count FROM movimientos WHERE id_producto = ?';
-    
-    db.query(checkMovimientosSql, [id], (err, movimientosResults) => {
-        if (err) {
-            console.error('Error al verificar movimientos:', err);
-            return res.status(500).json({ 
-                success: false,
-                error: 'Error al verificar movimientos del producto' 
-            });
-        }
-        
-        if (movimientosResults[0].count > 0) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'No se puede eliminar el producto porque tiene movimientos registrados'
-            });
-        }
-        
-        // Si no tiene movimientos, proceder con la eliminación
-        const deleteSql = 'DELETE FROM productos WHERE id_producto = ?';
-        
-        db.query(deleteSql, [id], (err, results) => {
-            if (err) {
-                console.error('Error al eliminar producto:', err);
-                return res.status(500).json({ 
-                    success: false,
-                    error: 'Error al eliminar producto' 
-                });
-            }
-            
-            if (results.affectedRows === 0) {
-                return res.status(404).json({ 
-                    success: false,
-                    error: 'Producto no encontrado' 
-                });
-            }
-            
-            res.json({ 
-                success: true,
-                message: 'Producto eliminado exitosamente' 
-            });
-        });
-    });
-});
-
 // Ruta de información general de la API
 app.get('/', (req, res) => {
     res.json({
         message: 'API de Distribuidora Martín - Sistema de Inventarios',
         version: '2.0.0',
         endpoints: {
+            auth: {
+                'POST /api/auth/login': 'Iniciar sesión',
+                'POST /api/auth/logout': 'Cerrar sesión',
+                'GET /api/auth/verify': 'Verificar sesión',
+                'GET /api/auth/me': 'Obtener datos del usuario'
+            },
             productos: {
                 'GET /api/productos': 'Obtener todos los productos',
                 'GET /api/productos?search=term': 'Buscar productos',
                 'GET /api/productos/buscar/:termino': 'Búsqueda específica',
                 'GET /api/productos/validar-codigo/:codigo': 'Validar código único',
                 'GET /api/productos/:id': 'Obtener producto por ID',
-                'POST /api/productos/nuevo': 'Crear nuevo producto (con validaciones)',
+                'POST /api/productos/nuevo': 'Crear nuevo producto',
                 'PUT /api/productos/:id': 'Actualizar producto',
                 'DELETE /api/productos/:id': 'Eliminar producto'
             },
@@ -365,7 +494,7 @@ app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
     console.log(`📊 Sistema de Inventarios - Distribuidora Martín`);
     console.log(`🔗 Endpoints disponibles en: http://localhost:${PORT}/`);
+    console.log(`🔐 Autenticación con contraseñas en texto plano`);
 });
 
-// Exportar la conexión para usar en otros archivos si es necesario
 module.exports = db;

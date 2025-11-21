@@ -1,11 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './componentes/autenticacion/Login';
-import { isAuthenticated, getCurrentUser } from './utilidades/auth';
+import { isAuthenticated, getCurrentUser, verifySession } from './utilidades/auth';
 import TablaProductos from './componentes/productos/TablaProductos';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-
 
 const AdminDashboard = () => (
   <div className="dashboard">
@@ -21,7 +20,6 @@ const EmployeeDashboard = () => (
   </div>
 );
 
-// Página dedicada para productos
 const ProductosPage = () => (
   <div className="productos-page">
     <TablaProductos />
@@ -29,19 +27,63 @@ const ProductosPage = () => (
 );
 
 const ProtectedRoute = ({ children }) => {
-  if (!isAuthenticated()) {
+  const [authStatus, setAuthStatus] = useState('checking'); // 'checking', 'authenticated', 'unauthenticated'
+
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      // Primero verificar si hay usuario en localStorage
+      if (!isAuthenticated()) {
+        setAuthStatus('unauthenticated');
+        return;
+      }
+
+      // Luego verificar con el servidor
+      try {
+        const user = await verifySession();
+        if (user) {
+          setAuthStatus('authenticated');
+        } else {
+          setAuthStatus('unauthenticated');
+        }
+      } catch (error) {
+        console.error('Error verificando autenticación:', error);
+        // En caso de error, permitir el acceso basado en localStorage
+        setAuthStatus('authenticated');
+      }
+    };
+
+    checkAuthentication();
+  }, []);
+
+  if (authStatus === 'checking') {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh' 
+      }}>
+        <div>Cargando...</div>
+      </div>
+    );
+  }
+
+  if (authStatus === 'unauthenticated') {
     return <Navigate to="/login" replace />;
   }
+
   return children;
 };
 
 const DashboardRedirect = () => {
   const user = getCurrentUser();
+  
   if (user?.role === 'Administrador') {
     return <Navigate to="/admin-dashboard" replace />;
   } else if (user?.role === 'Empleado') {
     return <Navigate to="/employee-dashboard" replace />;
   }
+  
   return <Navigate to="/login" replace />;
 };
 
@@ -67,7 +109,6 @@ function App() {
               </ProtectedRoute>
             } 
           />
-          {/* RUTA PARA PRODUCTOS */}
           <Route 
             path="/productos" 
             element={
