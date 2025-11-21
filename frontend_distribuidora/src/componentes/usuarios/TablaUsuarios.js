@@ -249,7 +249,7 @@ const TablaUsuarios = () => {
       {/* Header con título */}
       <div className="usuarios-header">
         <div className="header-info">
-          <h1>👥 Gestión de Usuarios</h1>
+          <h1> Gestión de Usuarios</h1>
           <p>Administra los usuarios del sistema de Distribuidora Martin</p>
         </div>
         <div className="header-stats">
