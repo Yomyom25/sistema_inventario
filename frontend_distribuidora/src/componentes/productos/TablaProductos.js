@@ -20,9 +20,14 @@ const TablaProductos = () => {
       setCargando(true);
       setError(null);
       
-      const response = await fetch(`${API_BASE_URL}/productos`);
+      const response = await fetch(`${API_BASE_URL}/productos`, {
+        credentials: 'include' // 👈 ESTA LÍNEA ES CLAVE
+      });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('No estás autenticado. Por favor inicia sesión nuevamente.');
+        }
         throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
       }
       
@@ -83,10 +88,14 @@ const TablaProductos = () => {
     if (window.confirm(`¿Estás seguro de eliminar el producto: ${producto.nombre}?`)) {
       try {
         const response = await fetch(`${API_BASE_URL}/productos/${producto.id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          credentials: 'include' // 👈 AGREGAR CREDENCIALES
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('No estás autenticado. Por favor inicia sesión nuevamente.');
+          }
           throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
         }
 
@@ -138,6 +147,7 @@ const TablaProductos = () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include', // 👈 AGREGAR CREDENCIALES
           body: JSON.stringify(datosBackend)
         });
       } else {
@@ -148,11 +158,15 @@ const TablaProductos = () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include', // 👈 AGREGAR CREDENCIALES
           body: JSON.stringify(datosBackend)
         });
       }
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('No estás autenticado. Por favor inicia sesión nuevamente.');
+        }
         throw new Error(`Error ${response.status}: No se pudo conectar al servidor`);
       }
 
@@ -184,7 +198,7 @@ const TablaProductos = () => {
       <div className="tabla-productos-container">
         <div className="productos-header">
           <div className="header-info">
-            <h1>📦 Gestión de Productos</h1>
+            <h1> Gestión de Productos</h1>
             <p>Administra el inventario completo de la distribuidora</p>
           </div>
         </div>
@@ -202,7 +216,7 @@ const TablaProductos = () => {
       <div className="tabla-productos-container">
         <div className="productos-header">
           <div className="header-info">
-            <h1>📦 Gestión de Productos</h1>
+            <h1> Gestión de Productos</h1>
             <p>Administra el inventario completo de la distribuidora</p>
           </div>
         </div>
@@ -210,9 +224,16 @@ const TablaProductos = () => {
           <div className="sin-productos-icon">❌</div>
           <h3>Error de conexión</h3>
           <p>{error}</p>
-          <p>Asegúrate de que el servidor backend esté ejecutándose en http://localhost:3000</p>
+          <p>Asegúrate de que el servidor backend esté ejecutándose en http://localhost:5000</p>
           <button className="btn-nuevo-producto" onClick={cargarProductos}>
             🔄 Reintentar
+          </button>
+          <button 
+            className="btn-nuevo-producto" 
+            onClick={() => window.location.href = '/login'}
+            style={{ marginLeft: '1rem', backgroundColor: '#dc2626' }}
+          >
+            🔐 Ir al Login
           </button>
         </div>
       </div>
@@ -232,7 +253,7 @@ const TablaProductos = () => {
         <>
           <div className="productos-header">
             <div className="header-info">
-              <h1>📦 Gestión de Productos</h1>
+              <h1> Gestión de Productos</h1>
               <p>Administra el inventario completo de la distribuidora</p>
             </div>
             <div className="header-stats">
