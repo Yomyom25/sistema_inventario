@@ -1,24 +1,111 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Login from './componentes/autenticacion/Login';
-import { isAuthenticated, getCurrentUser, verifySession } from './utilidades/auth';
+import { isAuthenticated, getCurrentUser, verifySession, logout } from './utilidades/auth';
 import TablaProductos from './componentes/productos/TablaProductos';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
-const AdminDashboard = () => (
-  <div className="dashboard">
-    <h1>Dashboard Administrador</h1>
-    <p>Bienvenido al panel de administración</p>
-  </div>
-);
+const AdminDashboard = () => {
+  const navigate = useNavigate();
 
-const EmployeeDashboard = () => (
-  <div className="dashboard">
-    <h1>Dashboard Empleado</h1>
-    <p>Bienvenido al panel de empleado</p>
-  </div>
-);
+  const handleVerProductos = () => {
+    navigate('/productos');
+  };
+
+  const handleVerUsuarios = () => {
+    // Aquí puedes navegar a la tabla de usuarios cuando la crees
+    console.log('Navegar a tabla de usuarios');
+  };
+
+  const handleCerrarSesion = () => {
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <div className="dashboard">
+      <h1>Dashboard Administrador</h1>
+      <p>Bienvenido al panel de administración</p>
+      <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <button 
+          onClick={handleVerProductos}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#1e40af',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          Ver Tabla Productos
+        </button>
+        <button 
+          onClick={handleVerUsuarios}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#059669',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          Ver Tabla Usuarios
+        </button>
+        <button 
+          onClick={handleCerrarSesion}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#dc2626',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          Cerrar Sesión
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const EmployeeDashboard = () => {
+  const navigate = useNavigate();
+
+  const handleCerrarSesion = () => {
+    logout();
+    navigate('/login');
+  };
+
+  return (
+    <div className="dashboard">
+      <h1>Dashboard Empleado</h1>
+      <p>Bienvenido al panel de empleado</p>
+      <div style={{ marginTop: '2rem' }}>
+        <button 
+          onClick={handleCerrarSesion}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#dc2626',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          Cerrar Sesión
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const ProductosPage = () => (
   <div className="productos-page">
