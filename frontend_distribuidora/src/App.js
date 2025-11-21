@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import Login from './componentes/autenticacion/Login';
 import { isAuthenticated, getCurrentUser, verifySession, logout } from './utilidades/auth';
 import TablaProductos from './componentes/productos/TablaProductos';
+import TablaUsuarios from './componentes/usuarios/TablaUsuarios';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -14,8 +15,7 @@ const AdminDashboard = () => {
   };
 
   const handleVerUsuarios = () => {
-    // Aquí puedes navegar a la tabla de usuarios cuando la crees
-    console.log('Navegar a tabla de usuarios');
+    navigate('/usuarios');
   };
 
   const handleCerrarSesion = () => {
@@ -113,6 +113,12 @@ const ProductosPage = () => (
   </div>
 );
 
+const UsuariosPage = () => (
+  <div className="usuarios-page">
+    <TablaUsuarios />
+  </div>
+);
+
 const ProtectedRoute = ({ children }) => {
   const [authStatus, setAuthStatus] = useState('checking'); // 'checking', 'authenticated', 'unauthenticated'
 
@@ -201,6 +207,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProductosPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/usuarios" 
+            element={
+              <ProtectedRoute>
+                <UsuariosPage />
               </ProtectedRoute>
             } 
           />

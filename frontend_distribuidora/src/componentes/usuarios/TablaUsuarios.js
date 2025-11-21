@@ -3,64 +3,63 @@ import { getCurrentUser } from '../../utilidades/auth';
 import FormularioUsuario from './FormularioUsuario';
 import './TablaUsuarios.css';
 
-// Datos de ejemplo de usuarios
-const usuariosEjemplo = [
-  {
-    id: 1,
-    username: 'admin',
-    nombre: 'Administrador Principal',
-    email: 'admin@martin.com',
-    role: 'Administrador',
-    activo: true,
-    fechaCreacion: '2024-01-15'
-  },
-  {
-    id: 2,
-    username: 'empleado',
-    nombre: 'Juan Pérez',
-    email: 'juan@martin.com',
-    role: 'Empleado',
-    activo: true,
-    fechaCreacion: '2024-01-20'
-  },
-  {
-    id: 3,
-    username: 'maria.garcia',
-    nombre: 'María García',
-    email: 'maria@martin.com',
-    role: 'Empleado',
-    activo: false,
-    fechaCreacion: '2024-02-01'
-  },
-  {
-    id: 4,
-    username: 'carlos.lopez',
-    nombre: 'Carlos López',
-    email: 'carlos@martin.com',
-    role: 'Empleado',
-    activo: true,
-    fechaCreacion: '2024-02-10'
-  }
-];
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const TablaUsuarios = () => {
   const [usuarios, setUsuarios] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
-  const [modoFormulario, setModoFormulario] = useState(null); // 'crear' o 'editar'
+  const [modoFormulario, setModoFormulario] = useState(null);
   const [usuarioEditando, setUsuarioEditando] = useState(null);
+  const [error, setError] = useState(null);
   const usuarioActual = getCurrentUser();
 
-  // ✅ MOVER useEffect ANTES de cualquier return condicional
-  useEffect(() => {
-    // Simular carga de datos
-    setTimeout(() => {
-      setUsuarios(usuariosEjemplo);
+  // Cargar usuarios desde el backend
+  const cargarUsuarios = async () => {
+    try {
+      setCargando(true);
+      setError(null);
+      
+      // Nota: Necesitarás crear este endpoint en tu backend
+      const response = await fetch(`${API_BASE_URL}/usuarios`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: No se pudo cargar los usuarios`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Convertir datos del backend al formato esperado
+        const usuariosConvertidos = data.data.map(usuario => ({
+          id: usuario.id_usuario,
+          username: usuario.nombre_usuario,
+          nombre: usuario.nombre_completo || usuario.nombre_usuario,
+          email: usuario.email || `${usuario.nombre_usuario}@martin.com`,
+          role: usuario.rol,
+          activo: usuario.estado === 'activo',
+          fechaCreacion: usuario.fecha_creacion
+        }));
+        setUsuarios(usuariosConvertidos);
+      } else {
+        throw new Error(data.error || 'Error al cargar usuarios');
+      }
+    } catch (error) {
+      console.error('Error cargando usuarios:', error);
+      setError(error.message);
+      setUsuarios([]);
+    } finally {
       setCargando(false);
-    }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    cargarUsuarios();
   }, []);
 
-  // ✅ AHORA SÍ la validación de permisos DESPUÉS de los hooks
+  // Validación de permisos
   if (usuarioActual?.role !== 'Administrador') {
     return (
       <div className="acceso-denegado">
@@ -98,63 +97,110 @@ const TablaUsuarios = () => {
     setUsuarioEditando(null);
   };
 
-  const manejarGuardarUsuario = (usuarioData) => {
-    if (modoFormulario === 'crear') {
-      // Crear nuevo usuario
-      const nuevoUsuario = {
-        ...usuarioData,
-        id: Date.now(),
-        activo: true,
-        fechaCreacion: new Date().toISOString().split('T')[0],
-        nombre: usuarioData.username, // Como no hay campo nombre, usamos username
-        email: `${usuarioData.username}@martin.com` // Generar email automático
-      };
-      setUsuarios(prev => [nuevoUsuario, ...prev]);
-      
-      // Mostrar mensaje de éxito
-      alert(`✅ Usuario "${usuarioData.username}" creado exitosamente`);
-      
-    } else if (modoFormulario === 'editar') {
-      // Editar usuario existente
-      const usuariosActualizados = usuarios.map(u =>
-        u.id === usuarioEditando.id 
-          ? { 
-              ...u, 
-              username: usuarioData.username,
-              role: usuarioData.role,
-              nombre: usuarioData.username, // Actualizar nombre también
-              // Solo actualizar password si se proporcionó uno nuevo
-              ...(usuarioData.password && { password: usuarioData.password })
-            }
-          : u
-      );
-      setUsuarios(usuariosActualizados);
-      
-      // Mostrar mensaje de éxito
-      alert(`✅ Usuario "${usuarioData.username}" actualizado exitosamente`);
-    }
+  const manejarGuardarUsuario = async (usuarioData) => {
+    try {
+      let response;
+      let url;
 
-    // Cerrar formulario
-    setModoFormulario(null);
-    setUsuarioEditando(null);
+      if (modoFormulario === 'crear') {
+        // Crear nuevo usuario
+        url = `${API_BASE_URL}/usuarios/nuevo`;
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            nombre_usuario: usuarioData.username,
+            contraseña: usuarioData.password,
+            rol: usuarioData.role,
+            estado: 'activo'
+          })
+        });
+      } else {
+        // Editar usuario existente
+        url = `${API_BASE_URL}/usuarios/${usuarioEditando.id}`;
+        const datosActualizacion = {
+          nombre_usuario: usuarioData.username,
+          rol: usuarioData.role
+        };
+
+        // Solo incluir contraseña si se proporcionó una nueva
+        if (usuarioData.password) {
+          datosActualizacion.contraseña = usuarioData.password;
+        }
+
+        response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(datosActualizacion)
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: No se pudo guardar el usuario`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Recargar usuarios desde el backend
+        await cargarUsuarios();
+        alert(`✅ Usuario ${modoFormulario === 'crear' ? 'creado' : 'actualizado'} exitosamente`);
+        setModoFormulario(null);
+        setUsuarioEditando(null);
+      } else {
+        throw new Error(data.error || 'Error al guardar usuario');
+      }
+    } catch (error) {
+      console.error('Error guardando usuario:', error);
+      alert(`❌ Error al guardar usuario: ${error.message}`);
+    }
   };
 
-  const manejarCambiarEstado = (usuario) => {
+  const manejarCambiarEstado = async (usuario) => {
     const accion = usuario.activo ? 'desactivar' : 'activar';
+    const nuevoEstado = usuario.activo ? 'inactivo' : 'activo';
     
     if (window.confirm(`¿Estás seguro de ${accion} al usuario: ${usuario.nombre}?`)) {
-      const usuariosActualizados = usuarios.map(u =>
-        u.id === usuario.id ? { ...u, activo: !u.activo } : u
-      );
-      setUsuarios(usuariosActualizados);
-      
-      alert(`✅ Usuario ${accion}do correctamente`);
+      try {
+        const response = await fetch(`${API_BASE_URL}/usuarios/${usuario.id}/estado`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            estado: nuevoEstado
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: No se pudo cambiar el estado`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Recargar usuarios desde el backend
+          await cargarUsuarios();
+          alert(`✅ Usuario ${accion}do correctamente`);
+        } else {
+          throw new Error(data.error || 'Error al cambiar estado');
+        }
+      } catch (error) {
+        console.error('Error cambiando estado:', error);
+        alert(`❌ Error al cambiar estado: ${error.message}`);
+      }
     }
   };
 
   // ========== RENDER PRINCIPAL ==========
 
-  // Si estamos en modo formulario, mostrar el formulario
   if (modoFormulario) {
     return (
       <FormularioUsuario
@@ -172,6 +218,27 @@ const TablaUsuarios = () => {
         <div className="cargando">
           <div className="loading-spinner"></div>
           <p>Cargando usuarios...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="tabla-usuarios-container">
+        <div className="usuarios-header">
+          <div className="header-info">
+            <h1> Gestión de Usuarios</h1>
+            <p>Administra los usuarios del sistema de Distribuidora Martin</p>
+          </div>
+        </div>
+        <div className="sin-usuarios">
+          <div className="sin-usuarios-icon">❌</div>
+          <h3>Error de conexión</h3>
+          <p>{error}</p>
+          <button className="btn-nuevo-usuario" onClick={cargarUsuarios}>
+            🔄 Reintentar
+          </button>
         </div>
       </div>
     );
@@ -264,7 +331,7 @@ const TablaUsuarios = () => {
                     onClick={() => manejarEditar(usuario)}
                     title="Editar usuario"
                   >
-                    ✏️ Editar
+                    Editar
                   </button>
                   <button 
                     className={`btn-estado ${usuario.activo ? 'desactivar' : 'activar'}`}

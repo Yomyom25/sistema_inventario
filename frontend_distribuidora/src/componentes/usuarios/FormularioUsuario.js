@@ -108,52 +108,43 @@ const FormularioUsuario = ({ usuarioEditar, onGuardar, onCancelar, usuariosExist
     return Object.keys(nuevosErrores).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!validarFormulario()) {
+    return;
+  }
+
+  setEnviando(true);
+
+  try {
+    // Preparar datos para el backend
+    const usuarioData = {
+      username: formData.username.trim(),
+      role: formData.role,
+      password: formData.password || undefined // Solo enviar si existe
+    };
+
+    // Llamar a la función onGuardar que se conecta con el backend
+    await onGuardar(usuarioData);
     
-    if (!validarFormulario()) {
-      return;
+    // Limpiar formulario si es nuevo usuario
+    if (!usuarioEditar) {
+      setFormData({
+        username: '',
+        password: '',
+        confirmPassword: '',
+        role: 'Empleado'
+      });
     }
+    
+  } catch (error) {
+    console.error('Error al guardar usuario:', error);
+  } finally {
+    setEnviando(false);
+  }
+};
 
-    setEnviando(true);
-
-    try {
-      // Simular llamada a API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const usuario = {
-        id: usuarioEditar ? usuarioEditar.id : Date.now(),
-        username: formData.username.trim(),
-        role: formData.role,
-        activo: usuarioEditar ? usuarioEditar.activo : true,
-        fechaCreacion: usuarioEditar ? usuarioEditar.fechaCreacion : new Date().toISOString().split('T')[0],
-        nombre: usuarioEditar ? usuarioEditar.nombre : formData.username,
-        email: usuarioEditar ? usuarioEditar.email : `${formData.username}@martin.com`
-      };
-
-      // Solo incluir password si se está creando o si se cambió en edición
-      if (formData.password) {
-        usuario.password = formData.password;
-      }
-
-      onGuardar(usuario);
-      
-      // Limpiar formulario si es nuevo usuario
-      if (!usuarioEditar) {
-        setFormData({
-          username: '',
-          password: '',
-          confirmPassword: '',
-          role: 'Empleado'
-        });
-      }
-      
-    } catch (error) {
-      console.error('Error al guardar usuario:', error);
-    } finally {
-      setEnviando(false);
-    }
-  };
 
   const calcularSeguridadPassword = () => {
     if (!formData.password) return { nivel: 0, texto: '', color: '' };
