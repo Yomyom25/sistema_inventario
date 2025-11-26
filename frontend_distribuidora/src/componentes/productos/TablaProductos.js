@@ -334,14 +334,14 @@ const TablaProductos = () => {
                         onClick={() => manejarEditar(producto)}
                         title="Editar producto"
                       >
-                        ✏️ Editar
+                        Editar
                       </button>
                       <button 
                         className="btn-eliminar"
                         onClick={() => manejarEliminar(producto)}
                         title="Eliminar producto"
                       >
-                        🗑️ Eliminar
+                        Eliminar
                       </button>
                     </td>
                   </tr>
