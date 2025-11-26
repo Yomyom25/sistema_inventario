@@ -1,0 +1,426 @@
+/* Fondo blanco para toda la vista */
+.pagina-historial-ventas {
+  min-height: 100vh;
+  background: white;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem 0;
+}
+
+/* Contenedor principal */
+.historial-ventas {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  max-width: 1200px;
+  margin: 2rem auto;
+  width: 100%;
+}
+
+/* Header */
+.historial-header {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  color: white;
+  padding: 2.3rem;
+}
+
+.historial-header h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.7rem;
+  font-weight: 700;
+}
+
+.historial-header p {
+  margin: 0;
+  opacity: 0.95;
+  font-size: 1rem;
+}
+
+/* Sección de Filtros */
+.filtros-section {
+  padding: 1.5rem 2.3rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.filtros-header h3 {
+  margin: 0 0 1rem 0;
+  color: #374151;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.filtros-campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  align-items: end;
+}
+
+.filtro-grupo {
+  display: flex;
+  flex-direction: column;
+}
+
+.filtro-label {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.filtro-input {
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.filtro-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.filtro-acciones {
+  display: flex;
+  align-items: flex-end;
+}
+
+.btn-limpiar {
+  padding: 0.75rem 1.5rem;
+  background: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-limpiar:hover {
+  background: #4b5563;
+}
+
+/* Sección de Reportes */
+.reportes-section {
+  padding: 1.5rem 2.3rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: white;
+}
+
+.reportes-section h3 {
+  margin: 0 0 1rem 0;
+  color: #374151;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.botones-reportes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.btn-reporte {
+  padding: 1rem 1.5rem;
+  background: #1e40af;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.btn-reporte:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+}
+
+/* Sección de Tabla */
+.tabla-section {
+  padding: 1.5rem 2.3rem;
+}
+
+.tabla-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.tabla-header h3 {
+  margin: 0;
+  color: #374151;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.total-registros {
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* Tabla - CORREGIDO */
+.tabla-contenedor {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.tabla-ventas {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  table-layout: fixed; /* Añadido para consistencia */
+}
+
+.tabla-ventas th {
+  background: #f8fafc;
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+}
+
+.tabla-ventas td {
+  padding: 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+  vertical-align: top; /* Añadido para mejor alineación */
+}
+
+.tabla-ventas tr:last-child td {
+  border-bottom: none;
+}
+
+.tabla-ventas tr:hover {
+  background: #f9fafb;
+}
+
+/* Anchos de columnas específicos - NUEVO */
+.tabla-ventas th:nth-child(1), /* Producto */
+.tabla-ventas td:nth-child(1) {
+  width: 25%;
+}
+
+.tabla-ventas th:nth-child(2), /* Cantidad */
+.tabla-ventas td:nth-child(2) {
+  width: 10%;
+}
+
+.tabla-ventas th:nth-child(3), /* Motivo */
+.tabla-ventas td:nth-child(3) {
+  width: 20%;
+}
+
+.tabla-ventas th:nth-child(4), /* Fecha */
+.tabla-ventas td:nth-child(4) {
+  width: 15%;
+}
+
+.tabla-ventas th:nth-child(5), /* Usuario */
+.tabla-ventas td:nth-child(5) {
+  width: 30%;
+}
+
+/* Estilos específicos de columnas */
+.texto-centro {
+  text-align: center;
+}
+
+.texto-derecha {
+  text-align: right;
+}
+
+/* Información del Producto - MEJORADO */
+.producto-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.producto-codigo {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+}
+
+.producto-nombre {
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+/* Badge de Cantidad - MEJORADO */
+.cantidad-badge {
+  display: inline-block;
+  padding: 0.4rem 0.8rem;
+  background: #1e40af;
+  color: white;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 50px;
+  text-align: center;
+}
+
+/* Motivo - MEJORADO */
+.motivo {
+  padding: 0.5rem 0.75rem;
+  background: #f0f9ff;
+  border: 1px solid #e0f2fe;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #0369a1;
+  display: inline-block;
+  max-width: 100%;
+  word-wrap: break-word;
+  line-height: 1.3;
+}
+
+.motivo.sin-motivo {
+  background: #f3f4f6;
+  color: #6b7280;
+  font-style: italic;
+  border-color: #e5e7eb;
+}
+
+/* Fecha */
+.fecha {
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+/* Información del Usuario - MEJORADO */
+.usuario-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.usuario-nombre {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.95rem;
+}
+
+.usuario-rol {
+  font-size: 0.75rem;
+  color: #059669;
+  background: #f0fdf4;
+  padding: 0.3rem 0.6rem;
+  border-radius: 12px;
+  display: inline-block;
+  width: fit-content;
+  font-weight: 600;
+  border: 1px solid #dcfce7;
+}
+
+.usuario-email {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-family: 'Courier New', monospace;
+}
+
+/* Estados de carga y sin datos */
+.cargando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: #6b7280;
+}
+
+.sin-datos {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 2px dashed #d1d5db;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #f3f4f6;
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive - MEJORADO */
+@media (max-width: 768px) {
+  .pagina-historial-ventas {
+    padding: 1rem 0;
+  }
+  
+  .historial-ventas {
+    margin: 1rem;
+  }
+  
+  .historial-header,
+  .filtros-section,
+  .reportes-section,
+  .tabla-section {
+    padding: 1rem;
+  }
+  
+  .filtros-campos {
+    grid-template-columns: 1fr;
+  }
+  
+  .botones-reportes {
+    grid-template-columns: 1fr;
+  }
+  
+  .tabla-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  
+  .tabla-contenedor {
+    font-size: 0.85rem;
+  }
+  
+  .tabla-ventas {
+    table-layout: auto;
+  }
+  
+  .tabla-ventas th,
+  .tabla-ventas td {
+    padding: 0.75rem 0.5rem;
+    width: auto !important;
+  }
+  
+  .producto-info,
+  .usuario-info {
+    min-width: 120px;
+  }
+  
+  .cantidad-badge {
+    min-width: 40px;
+    padding: 0.3rem 0.6rem;
+  }
+}
