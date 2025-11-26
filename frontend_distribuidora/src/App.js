@@ -5,6 +5,7 @@ import { isAuthenticated, getCurrentUser, verifySession, logout } from './utilid
 import TablaProductos from './componentes/productos/TablaProductos';
 import TablaUsuarios from './componentes/usuarios/TablaUsuarios';
 import FormularioVentas from './componentes/ventas/FormularioVentas';
+import HistorialVentas from './componentes/ventas/HistorialVentas';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -19,8 +20,8 @@ const AdminDashboard = () => {
     navigate('/usuarios');
   };
 
-  const handleRegistrarVentas = () => {
-    navigate('/ventas');
+  const handleVerHistorialVentas = () => {
+    navigate('/historial-ventas');
   };
 
   const handleCerrarSesion = () => {
@@ -62,7 +63,7 @@ const AdminDashboard = () => {
           Ver Tabla Usuarios
         </button>
         <button 
-          onClick={handleRegistrarVentas}
+          onClick={handleVerHistorialVentas}
           style={{
             padding: '0.75rem 1.5rem',
             backgroundColor: '#7c3aed',
@@ -73,7 +74,7 @@ const AdminDashboard = () => {
             fontSize: '1rem'
           }}
         >
-          Registrar Ventas
+          Historial de Ventas
         </button>
         <button 
           onClick={handleCerrarSesion}
@@ -101,6 +102,10 @@ const EmployeeDashboard = () => {
     navigate('/ventas');
   };
 
+  const handleVerHistorialVentas = () => {
+    navigate('/historial-ventas');
+  };
+
   const handleCerrarSesion = () => {
     logout();
     navigate('/login');
@@ -124,6 +129,20 @@ const EmployeeDashboard = () => {
           }}
         >
           Registrar Venta
+        </button>
+        <button 
+          onClick={handleVerHistorialVentas}
+          style={{
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#7c3aed',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          Historial de Ventas
         </button>
         <button 
           onClick={handleCerrarSesion}
@@ -156,7 +175,6 @@ const UsuariosPage = () => (
   </div>
 );
 
-// NUEVO COMPONENTE PARA LA PÁGINA DE VENTAS
 const VentasPage = () => {
   // Datos de ejemplo para productos - en un caso real vendrían de una API
   const [productos, setProductos] = useState([
@@ -232,6 +250,12 @@ const VentasPage = () => {
     </div>
   );
 };
+
+const HistorialVentasPage = () => (
+  <div className="historial-ventas-page">
+    <HistorialVentas />
+  </div>
+);
 
 const ProtectedRoute = ({ children }) => {
   const [authStatus, setAuthStatus] = useState('checking'); // 'checking', 'authenticated', 'unauthenticated'
@@ -332,12 +356,19 @@ function App() {
               </ProtectedRoute>
             } 
           />
-          {/* NUEVA RUTA PARA VENTAS */}
           <Route 
             path="/ventas" 
             element={
               <ProtectedRoute>
                 <VentasPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/historial-ventas" 
+            element={
+              <ProtectedRoute>
+                <HistorialVentasPage />
               </ProtectedRoute>
             } 
           />

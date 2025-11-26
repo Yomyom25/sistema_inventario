@@ -1,7 +1,7 @@
 /* Fondo blanco para toda la vista */
 .pagina-historial-ventas {
   min-height: 100vh;
-  background: white;
+  background: #f8fafc;
   display: flex;
   justify-content: center;
   align-items: flex-start;

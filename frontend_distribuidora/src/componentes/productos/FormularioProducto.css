@@ -1,7 +1,7 @@
 /* Fondo blanco para toda esta vista */
 .pagina-producto {
   min-height: 100vh;        /* Ocupa toda la pantalla */
-  background: white;        /* Ya no sale gris */
+  background: #f8fafc;        /* Ya no sale gris */
   display: flex;
   justify-content: center;
   align-items: flex-start;  /* Si quieres centrar vertical, cambia a center */

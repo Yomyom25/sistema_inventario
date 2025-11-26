@@ -167,7 +167,7 @@ const HistorialVentas = () => {
     <div className="pagina-historial-ventas">
       <div className="historial-ventas">
         <div className="historial-header">
-          <h2>📋 Historial de Ventas</h2>
+          <h2> Historial de Ventas</h2>
           <p>Consulta todas las ventas registradas en el sistema</p>
         </div>
 

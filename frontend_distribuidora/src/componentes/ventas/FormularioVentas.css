@@ -1,7 +1,7 @@
 /* Fondo blanco para toda esta vista */
 .pagina-venta {
   min-height: 100vh;
-  background: white;
+  background:  #f8fafc;
   display: flex;
   justify-content: center;
   align-items: flex-start;

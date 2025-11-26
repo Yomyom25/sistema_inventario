@@ -345,7 +345,7 @@ const FormularioVentas = ({
                   Registrando...
                 </>
               ) : (
-                '✅ Registrar Venta'
+                'Registrar Venta'
               )}
             </button>
           </div>
