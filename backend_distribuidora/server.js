@@ -841,4 +841,79 @@ app.post("/api/ventas", requireAuth, (req, res) => {
     });
 });
 
+// Obtener historial de ventas con información del usuario
+app.get("/api/ventas/historial", requireAuth, (req, res) => {
+    const { fechaDesde, fechaHasta } = req.query;
+
+    let sql = `
+        SELECT 
+            m.id_movimiento,
+            m.cantidad,
+            m.fecha_movimiento,
+            m.motivo,
+            p.id_producto,
+            p.codigo,
+            p.nombre as producto_nombre,
+            p.precio_venta,
+            u.id_usuario,
+            u.nombre_usuario,
+            u.rol
+        FROM movimientos m
+        INNER JOIN productos p ON m.id_producto = p.id_producto
+        INNER JOIN usuarios u ON m.id_usuario = u.id_usuario
+        INNER JOIN tipos_movimiento tm ON m.id_tipo_movimiento = tm.id_tipo_movimiento
+        WHERE tm.nombre = 'Salida'
+    `;
+
+    const params = [];
+
+    // Aplicar filtros de fecha si existen
+    if (fechaDesde) {
+        sql += " AND m.fecha_movimiento >= ?";
+        params.push(fechaDesde);
+    }
+
+    if (fechaHasta) {
+        sql += " AND m.fecha_movimiento <= ?";
+        params.push(fechaHasta);
+    }
+
+    sql += " ORDER BY m.fecha_movimiento DESC, m.created_at DESC";
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error("Error al obtener historial de ventas:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al obtener historial de ventas",
+            });
+        }
+
+        // Formatear los resultados
+        const ventas = results.map(row => ({
+            id: row.id_movimiento,
+            producto: {
+                codigo: row.codigo,
+                nombre: row.producto_nombre,
+                precioVenta: parseFloat(row.precio_venta)
+            },
+            cantidad: row.cantidad,
+            motivo: row.motivo ? row.motivo.replace('Venta: ', '') : 'No especificado',
+            fecha: row.fecha_movimiento,
+            usuario: {
+                nombre: row.nombre_usuario,
+                email: `${row.nombre_usuario.toLowerCase().replace(' ', '')}@empresa.com`,
+                rol: row.rol
+            },
+            total: (parseFloat(row.precio_venta) * row.cantidad).toFixed(2)
+        }));
+
+        res.json({
+            success: true,
+            data: ventas,
+            total: ventas.length
+        });
+    });
+});
+
 module.exports = db;

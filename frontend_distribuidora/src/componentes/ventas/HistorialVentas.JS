@@ -1,133 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './HistorialVentas.css';
 
 const HistorialVentas = () => {
-  const [ventas, setVentas] = useState([]);
   const [ventasFiltradas, setVentasFiltradas] = useState([]);
   const [filtros, setFiltros] = useState({
     fechaDesde: '',
     fechaHasta: ''
   });
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Datos de ejemplo - en un caso real vendrían de una API
-  useEffect(() => {
-    const cargarVentas = async () => {
-      setCargando(true);
+  // Cargar ventas desde la API
+  const cargarVentas = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    
+    try {
+      // Construir URL con parámetros de filtro
+      let url = 'http://localhost:5000/api/ventas/historial';
+      const params = new URLSearchParams();
       
-      // Simular carga de datos desde API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (filtros.fechaDesde) {
+        params.append('fechaDesde', filtros.fechaDesde);
+      }
       
-      const ventasEjemplo = [
-        {
-          id: 1,
-          producto: {
-            codigo: 'PROD-001',
-            nombre: 'Laptop HP Pavilion',
-            precioVenta: 800
-          },
-          cantidad: 2,
-          motivo: 'Venta normal',
-          fecha: '2024-01-14',
-          usuario: {
-            nombre: 'Juan Pérez',
-            email: 'juan@empresa.com',
-            rol: 'Administrador'
-          },
-          total: 1600
-        },
-        {
-          id: 2,
-          producto: {
-            codigo: 'PROD-002',
-            nombre: 'Mouse Inalámbrico',
-            precioVenta: 30
-          },
-          cantidad: 5,
-          motivo: 'Promoción especial',
-          fecha: '2024-01-15',
-          usuario: {
-            nombre: 'Carlos López',
-            email: 'carlos@empresa.com',
-            rol: 'Empleado'
-          },
-          total: 150
-        },
-        {
-          id: 3,
-          producto: {
-            codigo: 'PROD-003',
-            nombre: 'Teclado Mecánico',
-            precioVenta: 75
-          },
-          cantidad: 11,
-          motivo: 'No especificado',
-          fecha: '2024-01-16',
-          usuario: {
-            nombre: 'Pedro Rodríguez',
-            email: 'pedro@empresa.com',
-            rol: 'Empleado'
-          },
-          total: 825
-        },
-        {
-          id: 4,
-          producto: {
-            codigo: 'PROD-001',
-            nombre: 'Laptop HP Pavilion',
-            precioVenta: 800
-          },
-          cantidad: 11,
-          motivo: 'Cliente corporativo',
-          fecha: '2024-01-17',
-          usuario: {
-            nombre: 'Pedro Rodríguez',
-            email: 'pedro@empresa.com',
-            rol: 'Empleado'
-          },
-          total: 8800
-        },
-        {
-          id: 5,
-          producto: {
-            codigo: 'PROD-004',
-            nombre: 'Monitor 24"',
-            precioVenta: 200
-          },
-          cantidad: 3,
-          motivo: 'Equipo nuevo',
-          fecha: '2024-01-18',
-          usuario: {
-            nombre: 'Pedro Rodríguez',
-            email: 'pedro@empresa.com',
-            rol: 'Empleado'
-          },
-          total: 600
-        }
-      ];
+      if (filtros.fechaHasta) {
+        params.append('fechaHasta', filtros.fechaHasta);
+      }
       
-      setVentas(ventasEjemplo);
-      setVentasFiltradas(ventasEjemplo);
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
+      const response = await fetch(url, {
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Error al cargar el historial');
+      }
+      
+      setVentasFiltradas(data.data);
+    } catch (error) {
+      console.error('Error al cargar ventas:', error);
+      setError(error.message);
+      setVentasFiltradas([]);
+    } finally {
       setCargando(false);
-    };
+    }
+  }, [filtros.fechaDesde, filtros.fechaHasta]);
 
-    cargarVentas();
-  }, []);
-
-  // Aplicar filtros
   useEffect(() => {
-    let resultado = ventas;
-
-    if (filtros.fechaDesde) {
-      resultado = resultado.filter(venta => venta.fecha >= filtros.fechaDesde);
-    }
-
-    if (filtros.fechaHasta) {
-      resultado = resultado.filter(venta => venta.fecha <= filtros.fechaHasta);
-    }
-
-    setVentasFiltradas(resultado);
-  }, [filtros, ventas]);
+    cargarVentas();
+  }, [cargarVentas]);
 
   const handleFiltroChange = (e) => {
     const { name, value } = e.target;
@@ -146,17 +73,14 @@ const HistorialVentas = () => {
 
   const generarReporteProductosMasVendidos = () => {
     alert('📊 Generando reporte de productos más vendidos...');
-    // Lógica para generar reporte
   };
 
   const generarReporteValorizacionInventario = () => {
     alert('💰 Generando reporte de valorización de inventario...');
-    // Lógica para generar reporte
   };
 
   const generarReporteMovimientosInventario = () => {
     alert('📈 Generando reporte de movimientos de inventario...');
-    // Lógica para generar reporte
   };
 
   const formatearFecha = (fecha) => {
@@ -246,6 +170,13 @@ const HistorialVentas = () => {
             <div className="cargando">
               <div className="loading-spinner"></div>
               <p>Cargando historial de ventas...</p>
+            </div>
+          ) : error ? (
+            <div className="sin-datos">
+              <p>❌ Error al cargar el historial: {error}</p>
+              <button onClick={cargarVentas} className="btn-reporte" style={{ marginTop: '1rem' }}>
+                Reintentar
+              </button>
             </div>
           ) : ventasFiltradas.length === 0 ? (
             <div className="sin-datos">
