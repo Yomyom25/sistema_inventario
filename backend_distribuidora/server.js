@@ -1750,6 +1750,7 @@ function generarReporteVentasPDF(doc, ventas, fechaDesde, fechaHasta) {
         y += 15;
     });
 
+    
     // Pie de página
     doc.fontSize(8)
         .font('Helvetica')
