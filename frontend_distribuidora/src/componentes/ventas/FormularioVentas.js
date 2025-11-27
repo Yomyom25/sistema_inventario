@@ -125,22 +125,34 @@ const FormularioVentas = ({
     setEnviando(true);
 
     try {
-      // Simular llamada a API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('http://localhost:5000/api/ventas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          productoId: formData.productoId,
+          cantidad: formData.cantidad,
+          fecha: formData.fecha,
+          motivo: formData.motivo
+        })
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Error al registrar la venta');
+      }
       
       const venta = {
-        id: Date.now(),
-        productoId: formData.productoId,
-        producto: productoSeleccionado,
-        cantidad: parseInt(formData.cantidad),
-        fecha: formData.fecha,
-        motivo: formData.motivo.trim(),
+        ...data.venta,
         usuario: usuarioActual,
         tipo: 'venta',
         fechaRegistro: new Date().toISOString(),
         stockAnterior: productoSeleccionado.stock,
-        stockNuevo: productoSeleccionado.stock - parseInt(formData.cantidad),
-        total: productoSeleccionado.precioVenta * parseInt(formData.cantidad)
+        stockNuevo: data.nuevoStock,
+        total: data.venta.total
       };
 
       onGuardarVenta(venta);
@@ -160,7 +172,7 @@ const FormularioVentas = ({
       
     } catch (error) {
       console.error('Error al registrar venta:', error);
-      alert('❌ Error al registrar la venta. Por favor, intente nuevamente.');
+      alert(`❌ Error: ${error.message}`);
     } finally {
       setEnviando(false);
     }

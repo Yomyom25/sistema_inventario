@@ -727,4 +727,118 @@ app.listen(PORT, () => {
     console.log(`🔐 Autenticación con contraseñas en texto plano`);
 });
 
+// =============================================
+// ENDPOINTS DE VENTAS (PROTEGIDOS)
+// =============================================
+
+// Registrar una nueva venta
+app.post("/api/ventas", requireAuth, (req, res) => {
+    const { productoId, cantidad, fecha, motivo } = req.body;
+    const userId = req.session.user.id;
+
+    if (!productoId || !cantidad || !fecha) {
+        return res.status(400).json({
+            success: false,
+            error: "Faltan datos requeridos (producto, cantidad, fecha)",
+        });
+    }
+
+    const cantidadVenta = parseInt(cantidad);
+    if (isNaN(cantidadVenta) || cantidadVenta <= 0) {
+        return res.status(400).json({
+            success: false,
+            error: "La cantidad debe ser un número mayor a 0",
+        });
+    }
+
+    // Iniciar transacción (simulada con callbacks anidados por falta de promesas/async-await en mysql2 básico)
+    // 1. Verificar stock y obtener datos del producto
+    const checkStockSql = "SELECT * FROM productos WHERE id_producto = ?";
+    db.query(checkStockSql, [productoId], (err, productResults) => {
+        if (err) {
+            console.error("Error al verificar stock:", err);
+            return res.status(500).json({ success: false, error: "Error de servidor" });
+        }
+
+        if (productResults.length === 0) {
+            return res.status(404).json({ success: false, error: "Producto no encontrado" });
+        }
+
+        const producto = productResults[0];
+        if (producto.stock_actual < cantidadVenta) {
+            return res.status(400).json({
+                success: false,
+                error: `Stock insuficiente. Disponible: ${producto.stock_actual}`,
+            });
+        }
+
+        // 2. Obtener ID del tipo de movimiento 'Salida'
+        const getTypeSql = "SELECT id_tipo_movimiento FROM tipos_movimiento WHERE nombre = 'Salida'";
+        db.query(getTypeSql, (err, typeResults) => {
+            if (err) {
+                console.error("Error al obtener tipo de movimiento:", err);
+                return res.status(500).json({ success: false, error: "Error de servidor" });
+            }
+
+            let tipoMovimientoId;
+            if (typeResults.length > 0) {
+                tipoMovimientoId = typeResults[0].id_tipo_movimiento;
+                procesarVenta(tipoMovimientoId);
+            } else {
+                // Si no existe, crearlo (opcional, o devolver error)
+                // Para este caso, asumiremos que existe o usaremos un ID por defecto si fallara, pero mejor crearlo.
+                const createTypeSql = "INSERT INTO tipos_movimiento (nombre, descripcion) VALUES ('Salida', 'Salida de productos por venta u otros')";
+                db.query(createTypeSql, (err, createResults) => {
+                    if (err) {
+                        console.error("Error al crear tipo de movimiento:", err);
+                        return res.status(500).json({ success: false, error: "Error al configurar tipo de movimiento" });
+                    }
+                    tipoMovimientoId = createResults.insertId;
+                    procesarVenta(tipoMovimientoId);
+                });
+            }
+
+            function procesarVenta(idTipoMovimiento) {
+                // 3. Registrar movimiento
+                const insertMovimientoSql = `
+                    INSERT INTO movimientos 
+                    (id_producto, id_usuario, id_tipo_movimiento, cantidad, fecha_movimiento, motivo, created_at) 
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                `;
+                const motivoFinal = motivo ? `Venta: ${motivo}` : "Venta directa";
+                
+                db.query(insertMovimientoSql, [productoId, userId, idTipoMovimiento, cantidadVenta, fecha, motivoFinal], (err, movResults) => {
+                    if (err) {
+                        console.error("Error al registrar movimiento:", err);
+                        return res.status(500).json({ success: false, error: "Error al registrar la venta" });
+                    }
+
+                    // 4. Actualizar stock del producto
+                    const updateStockSql = "UPDATE productos SET stock_actual = stock_actual - ? WHERE id_producto = ?";
+                    db.query(updateStockSql, [cantidadVenta, productoId], (err, updateResults) => {
+                        if (err) {
+                            console.error("Error al actualizar stock:", err);
+                            // Nota: En un sistema real, aquí deberíamos hacer rollback del movimiento
+                            return res.status(500).json({ success: false, error: "Error al actualizar stock" });
+                        }
+
+                        // 5. Responder éxito
+                        res.json({
+                            success: true,
+                            message: "Venta registrada exitosamente",
+                            nuevoStock: producto.stock_actual - cantidadVenta,
+                            venta: {
+                                id: movResults.insertId,
+                                producto: producto.nombre,
+                                cantidad: cantidadVenta,
+                                total: (producto.precio_venta * cantidadVenta).toFixed(2)
+                            }
+                        });
+                    });
+                });
+            }
+        });
+    });
+});
+
 module.exports = db;

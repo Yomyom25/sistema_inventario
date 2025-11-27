@@ -176,45 +176,41 @@ const UsuariosPage = () => (
 );
 
 const VentasPage = () => {
-  // Datos de ejemplo para productos - en un caso real vendrían de una API
-  const [productos, setProductos] = useState([
-    { 
-      id: 1, 
-      codigo: 'PROD-001', 
-      nombre: 'Laptop HP Pavilion', 
-      descripcion: 'Laptop gaming 15.6"', 
-      precioCompra: 500, 
-      precioVenta: 800, 
-      stock: 10 
-    },
-    { 
-      id: 2, 
-      codigo: 'PROD-002', 
-      nombre: 'Mouse Inalámbrico', 
-      descripcion: 'Mouse ergonómico RGB', 
-      precioCompra: 15, 
-      precioVenta: 30, 
-      stock: 25 
-    },
-    { 
-      id: 3, 
-      codigo: 'PROD-003', 
-      nombre: 'Teclado Mecánico', 
-      descripcion: 'Teclado mecánico gaming', 
-      precioCompra: 40, 
-      precioVenta: 75, 
-      stock: 15 
-    },
-    { 
-      id: 4, 
-      codigo: 'PROD-004', 
-      nombre: 'Monitor 24"', 
-      descripcion: 'Monitor Full HD 1080p', 
-      precioCompra: 120, 
-      precioVenta: 200, 
-      stock: 8 
-    },
-  ]);
+  const [productos, setProductos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProductos();
+  }, []);
+
+  const fetchProductos = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/productos', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        // Mapear datos de la API al formato que espera el componente
+        const productosMapeados = data.data.map(p => ({
+          id: p.id_producto,
+          codigo: p.codigo,
+          nombre: p.nombre,
+          descripcion: p.descripcion,
+          precioCompra: parseFloat(p.precio_compra),
+          precioVenta: parseFloat(p.precio_venta),
+          stock: p.stock_actual
+        }));
+        setProductos(productosMapeados);
+      } else {
+        console.error('Error al cargar productos:', data.error);
+      }
+    } catch (error) {
+      console.error('Error de conexión:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGuardarVenta = (venta) => {
     console.log('Venta registrada:', venta);
@@ -227,17 +223,15 @@ const VentasPage = () => {
           : p
       )
     );
-    
-    // Aquí normalmente harías la llamada a la API para guardar la venta
-    // y actualizar el stock en la base de datos
-    
-    alert(`✅ Venta registrada exitosamente!\nProducto: ${venta.producto.nombre}\nCantidad: ${venta.cantidad}\nTotal: $${venta.total}`);
   };
 
   const handleCancelarVenta = () => {
     console.log('Venta cancelada');
-    // Puedes agregar lógica adicional aquí si es necesario
   };
+
+  if (loading) {
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Cargando productos...</div>;
+  }
 
   return (
     <div className="ventas-page">

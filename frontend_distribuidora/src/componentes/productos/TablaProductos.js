@@ -107,14 +107,14 @@ const TablaProductos = () => {
           alert('✅ Producto eliminado correctamente');
         } else {
           if (data.error && data.error.includes('movimientos')) {
-            alert('❌ No se puede eliminar el producto porque tiene movimientos registrados');
+            alert(' No se puede eliminar el producto porque tiene movimientos registrados');
           } else {
             throw new Error(data.error);
           }
         }
       } catch (err) {
         console.error('Error eliminando producto:', err);
-        alert(`❌ Error al eliminar producto: ${err.message}`);
+        alert(` Error al eliminar producto`);
       }
     }
   };
