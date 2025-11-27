@@ -10,6 +10,16 @@ const HistorialVentas = () => {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
+  const [usuarioActual, setUsuarioActual] = useState(null);
+
+  // Obtener usuario actual al cargar el componente
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user'));
+    setUsuarioActual(user);
+  }, []);
+
+  // Verificar si el usuario es empleado
+  const esEmpleado = usuarioActual?.role === 'Empleado';
 
   // Cargar ventas desde la API
   const cargarVentas = useCallback(async () => {
@@ -27,6 +37,11 @@ const HistorialVentas = () => {
       
       if (filtros.fechaHasta) {
         params.append('fechaHasta', filtros.fechaHasta);
+      }
+      
+      // Si es empleado, filtrar solo sus ventas
+      if (esEmpleado) {
+        params.append('usuarioId', usuarioActual?.id);
       }
       
       if (params.toString()) {
@@ -51,7 +66,7 @@ const HistorialVentas = () => {
     } finally {
       setCargando(false);
     }
-  }, [filtros.fechaDesde, filtros.fechaHasta]);
+  }, [filtros.fechaDesde, filtros.fechaHasta, esEmpleado, usuarioActual?.id]);
 
   useEffect(() => {
     cargarVentas();
@@ -193,7 +208,17 @@ const HistorialVentas = () => {
       <div className="historial-ventas">
         <div className="historial-header">
           <h2>Historial de Ventas</h2>
-          <p>Consulta todas las ventas registradas en el sistema</p>
+          <p>
+            {esEmpleado 
+              ? 'Consulta tu historial personal de ventas' 
+              : 'Consulta todas las ventas registradas en el sistema'
+            }
+          </p>
+          {esEmpleado && (
+            <div className="rol-indicador">
+              <span className="badge-empleado">Vista de Empleado</span>
+            </div>
+          )}
         </div>
 
         {/* Filtros */}
@@ -234,52 +259,69 @@ const HistorialVentas = () => {
           </div>
         </div>
 
-        {/* Botones de Reportes */}
-        <div className="reportes-section">
-          <h3>Reportes {generandoReporte && '(Generando...)'}</h3>
-          <div className="botones-reportes">
-            <button
-              onClick={generarReporteProductosMasVendidos}
-              className="btn-reporte"
-              disabled={generandoReporte}
-            >
-              {generandoReporte ? '⏳ Generando...' : '📊 Productos Más Vendidos'}
-            </button>
-            <button
-              onClick={generarReporteValorizacionInventario}
-              className="btn-reporte"
-              disabled={generandoReporte}
-            >
-              {generandoReporte ? '⏳ Generando...' : '💰 Valorización de Inventario'}
-            </button>
-            <button
-              onClick={generarReporteMovimientosInventario}
-              className="btn-reporte"
-              disabled={generandoReporte}
-            >
-              {generandoReporte ? '⏳ Generando...' : '📈 Movimientos de Inventario'}
-            </button>
-            <button
-              onClick={generarReporteVentasPDF}
-              className="btn-reporte pdf"
-              disabled={generandoReporte}
-            >
-              {generandoReporte ? '⏳ Generando...' : '📄 Ventas (PDF)'}
-            </button>
-            <button
-              onClick={generarReporteVentasExcel}
-              className="btn-reporte excel"
-              disabled={generandoReporte}
-            >
-              {generandoReporte ? '⏳ Generando...' : '📊 Ventas (Excel)'}
-            </button>
+        {/* Botones de Reportes - DESHABILITADOS PARA EMPLEADOS */}
+        {!esEmpleado && (
+          <div className="reportes-section">
+            <h3>Reportes {generandoReporte && '(Generando...)'}</h3>
+            <div className="botones-reportes">
+              <button
+                onClick={generarReporteProductosMasVendidos}
+                className="btn-reporte"
+                disabled={generandoReporte}
+              >
+                {generandoReporte ? '⏳ Generando...' : '📊 Productos Más Vendidos'}
+              </button>
+              <button
+                onClick={generarReporteValorizacionInventario}
+                className="btn-reporte"
+                disabled={generandoReporte}
+              >
+                {generandoReporte ? '⏳ Generando...' : '💰 Valorización de Inventario'}
+              </button>
+              <button
+                onClick={generarReporteMovimientosInventario}
+                className="btn-reporte"
+                disabled={generandoReporte}
+              >
+                {generandoReporte ? '⏳ Generando...' : '📈 Movimientos de Inventario'}
+              </button>
+              <button
+                onClick={generarReporteVentasPDF}
+                className="btn-reporte pdf"
+                disabled={generandoReporte}
+              >
+                {generandoReporte ? '⏳ Generando...' : '📄 Ventas (PDF)'}
+              </button>
+              <button
+                onClick={generarReporteVentasExcel}
+                className="btn-reporte excel"
+                disabled={generandoReporte}
+              >
+                {generandoReporte ? '⏳ Generando...' : '📊 Ventas (Excel)'}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Mensaje informativo para empleados */}
+        {esEmpleado && (
+          <div className="info-empleado">
+            <div className="info-card">
+              <i className="fas fa-info-circle" style={{ color: '#3b82f6' }}></i>
+              <div>
+                <h4>Vista Restringida</h4>
+                <p>Como empleado, solo puedes ver tu historial personal de ventas. La generación de reportes está disponible únicamente para administradores.</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tabla de Ventas */}
         <div className="tabla-section">
           <div className="tabla-header">
-            <h3>Ventas Registradas</h3>
+            <h3>
+              {esEmpleado ? 'Mis Ventas Registradas' : 'Ventas Registradas'}
+            </h3>
             <span className="total-registros">
               Total: {ventasFiltradas.length} ventas
             </span>
@@ -315,7 +357,7 @@ const HistorialVentas = () => {
                     <th>Cantidad</th>
                     <th>Motivo</th>
                     <th>Fecha</th>
-                    <th>Usuario</th>
+                    {!esEmpleado && <th>Usuario</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -338,13 +380,15 @@ const HistorialVentas = () => {
                       <td className="texto-centro fecha">
                         {formatearFecha(venta.fecha)}
                       </td>
-                      <td>
-                        <div className="usuario-info">
-                          <span className="usuario-nombre">{venta.usuario.nombre}</span>
-                          <span className="usuario-rol">{venta.usuario.rol}</span>
-                          <span className="usuario-email">{venta.usuario.email}</span>
-                        </div>
-                      </td>
+                      {!esEmpleado && (
+                        <td>
+                          <div className="usuario-info">
+                            <span className="usuario-nombre">{venta.usuario.nombre}</span>
+                            <span className="usuario-rol">{venta.usuario.rol}</span>
+                            <span className="usuario-email">{venta.usuario.email}</span>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

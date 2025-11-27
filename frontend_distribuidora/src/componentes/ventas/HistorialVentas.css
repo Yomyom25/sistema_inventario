@@ -504,6 +504,50 @@
   animation: spin 1s linear infinite;
 }
 
+/* Estilos para la vista de empleado */
+.rol-indicador {
+  margin-top: 0.5rem;
+}
+
+.badge-empleado {
+  background-color: #3b82f6;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.info-empleado {
+  margin: 1.5rem 0;
+}
+
+.info-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 0.5rem;
+}
+
+.info-card i {
+  font-size: 1.25rem;
+  margin-top: 0.125rem;
+}
+
+.info-card h4 {
+  margin: 0 0 0.5rem 0;
+  color: #0369a1;
+}
+
+.info-card p {
+  margin: 0;
+  color: #0c4a6e;
+  font-size: 0.875rem;
+}
+
 /* Responsive para botones */
 @media (max-width: 768px) {
   .botones-reportes {
