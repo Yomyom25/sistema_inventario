@@ -2,6 +2,8 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const session = require("express-session");
+const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -806,7 +808,7 @@ app.post("/api/ventas", requireAuth, (req, res) => {
                     VALUES (?, ?, ?, ?, ?, ?, NOW())
                 `;
                 const motivoFinal = motivo ? `Venta: ${motivo}` : "Venta directa";
-                
+
                 db.query(insertMovimientoSql, [productoId, userId, idTipoMovimiento, cantidadVenta, fecha, motivoFinal], (err, movResults) => {
                     if (err) {
                         console.error("Error al registrar movimiento:", err);
@@ -915,5 +917,845 @@ app.get("/api/ventas/historial", requireAuth, (req, res) => {
         });
     });
 });
+
+// =============================================
+// ENDPOINTS DE REPORTES (PROTEGIDOS) - CORREGIDOS
+// =============================================
+
+// RF-006.1: Reporte de movimientos de inventario por rango de fechas
+app.get("/api/reportes/movimientos/pdf", requireAuth, (req, res) => {
+    const { fechaDesde, fechaHasta, tipoMovimiento } = req.query;
+
+    let sql = `
+        SELECT 
+            m.id_movimiento,
+            m.cantidad,
+            m.fecha_movimiento,
+            m.motivo,
+            p.codigo,
+            p.nombre as producto_nombre,
+            p.precio_compra,
+            p.precio_venta,
+            u.nombre_usuario,
+            tm.nombre as tipo_movimiento,
+            CASE 
+                WHEN tm.nombre = 'ENTRADA' THEN m.cantidad * p.precio_compra
+                WHEN tm.nombre = 'SALIDA' THEN m.cantidad * p.precio_venta
+            END as valor_movimiento
+        FROM movimientos m
+        INNER JOIN productos p ON m.id_producto = p.id_producto
+        INNER JOIN usuarios u ON m.id_usuario = u.id_usuario
+        INNER JOIN tipos_movimiento tm ON m.id_tipo_movimiento = tm.id_tipo_movimiento
+        WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (fechaDesde) {
+        sql += " AND DATE(m.fecha_movimiento) >= ?";
+        params.push(fechaDesde);
+    }
+
+    if (fechaHasta) {
+        sql += " AND DATE(m.fecha_movimiento) <= ?";
+        params.push(fechaHasta);
+    }
+
+    if (tipoMovimiento && tipoMovimiento !== 'TODOS') {
+        sql += " AND tm.nombre = ?";
+        params.push(tipoMovimiento);
+    }
+
+    sql += " ORDER BY m.fecha_movimiento DESC";
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error("Error al obtener movimientos:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al generar reporte de movimientos",
+            });
+        }
+
+        const doc = new PDFDocument();
+        const filename = `reporte-movimientos-${new Date().toISOString().split('T')[0]}.pdf`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+
+        doc.pipe(res);
+        generarReporteMovimientos(doc, results, fechaDesde, fechaHasta, tipoMovimiento);
+        doc.end();
+    });
+});
+
+// RF-006.2: Reporte de productos más vendidos
+app.get("/api/reportes/productos-mas-vendidos/pdf", requireAuth, (req, res) => {
+    const { fechaDesde, fechaHasta, limite = 10 } = req.query;
+
+    let sql = `
+        SELECT 
+            p.id_producto,
+            p.codigo,
+            p.nombre,
+            p.descripcion,
+            p.precio_compra,
+            p.precio_venta,
+            SUM(m.cantidad) as total_vendido,
+            SUM(m.cantidad * p.precio_venta) as total_ingresos,
+            COUNT(m.id_movimiento) as total_ventas
+        FROM productos p
+        INNER JOIN movimientos m ON p.id_producto = m.id_producto
+        INNER JOIN tipos_movimiento tm ON m.id_tipo_movimiento = tm.id_tipo_movimiento
+        WHERE tm.nombre = 'SALIDA'
+    `;
+
+    const params = [];
+
+    if (fechaDesde) {
+        sql += " AND DATE(m.fecha_movimiento) >= ?";
+        params.push(fechaDesde);
+    }
+
+    if (fechaHasta) {
+        sql += " AND DATE(m.fecha_movimiento) <= ?";
+        params.push(fechaHasta);
+    }
+
+    sql += ` 
+        GROUP BY p.id_producto, p.codigo, p.nombre, p.descripcion, p.precio_compra, p.precio_venta
+        ORDER BY total_vendido DESC
+        LIMIT ?
+    `;
+
+    params.push(parseInt(limite));
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error("Error al obtener productos más vendidos:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al generar reporte de productos más vendidos",
+            });
+        }
+
+        const doc = new PDFDocument();
+        const filename = `reporte-productos-mas-vendidos-${new Date().toISOString().split('T')[0]}.pdf`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+
+        doc.pipe(res);
+        generarReporteProductosMasVendidos(doc, results, fechaDesde, fechaHasta, limite);
+        doc.end();
+    });
+});
+
+// RF-006.3: Reporte de valorización de inventario - CORREGIDO
+app.get("/api/reportes/valorizacion-inventario/pdf", requireAuth, (req, res) => {
+    const sql = `
+        SELECT 
+            p.id_producto,
+            p.codigo,
+            p.nombre,
+            p.descripcion,
+            p.precio_compra,
+            p.precio_venta,
+            p.stock_actual,
+            (p.stock_actual * p.precio_compra) as valor_compra,
+            (p.stock_actual * p.precio_venta) as valor_venta,
+            ((p.precio_venta - p.precio_compra) / p.precio_compra * 100) as margen_ganancia
+        FROM productos p
+        WHERE p.stock_actual > 0
+        ORDER BY valor_venta DESC
+    `;
+
+    db.query(sql, [], (err, results) => {
+        if (err) {
+            console.error("Error al obtener valorización:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al generar reporte de valorización",
+            });
+        }
+
+        const doc = new PDFDocument();
+        const filename = `reporte-valorizacion-inventario-${new Date().toISOString().split('T')[0]}.pdf`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+
+        doc.pipe(res);
+        generarReporteValorizacion(doc, results);
+        doc.end();
+    });
+});
+
+// Reporte de ventas en PDF
+app.get("/api/reportes/ventas/pdf", requireAuth, (req, res) => {
+    const { fechaDesde, fechaHasta } = req.query;
+
+    let sql = `
+        SELECT 
+            m.id_movimiento,
+            m.cantidad,
+            m.fecha_movimiento,
+            m.motivo,
+            p.codigo,
+            p.nombre as producto_nombre,
+            p.precio_venta,
+            u.nombre_usuario,
+            u.rol
+        FROM movimientos m
+        INNER JOIN productos p ON m.id_producto = p.id_producto
+        INNER JOIN usuarios u ON m.id_usuario = u.id_usuario
+        INNER JOIN tipos_movimiento tm ON m.id_tipo_movimiento = tm.id_tipo_movimiento
+        WHERE tm.nombre = 'SALIDA'
+    `;
+
+    const params = [];
+
+    if (fechaDesde) {
+        sql += " AND DATE(m.fecha_movimiento) >= ?";
+        params.push(fechaDesde);
+    }
+
+    if (fechaHasta) {
+        sql += " AND DATE(m.fecha_movimiento) <= ?";
+        params.push(fechaHasta);
+    }
+
+    sql += " ORDER BY m.fecha_movimiento DESC";
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            console.error("Error al obtener datos para PDF:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al generar reporte PDF",
+            });
+        }
+
+        const doc = new PDFDocument();
+        const filename = `reporte-ventas-${new Date().toISOString().split('T')[0]}.pdf`;
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Type', 'application/pdf');
+
+        doc.pipe(res);
+        generarReporteVentasPDF(doc, results, fechaDesde, fechaHasta);
+        doc.end();
+    });
+});
+
+// Reporte de ventas en Excel
+app.get("/api/reportes/ventas/excel", requireAuth, async (req, res) => {
+    const { fechaDesde, fechaHasta } = req.query;
+
+    let sql = `
+        SELECT 
+            m.id_movimiento,
+            m.cantidad,
+            m.fecha_movimiento,
+            m.motivo,
+            p.codigo,
+            p.nombre as producto_nombre,
+            p.precio_venta,
+            u.nombre_usuario,
+            u.rol
+        FROM movimientos m
+        INNER JOIN productos p ON m.id_producto = p.id_producto
+        INNER JOIN usuarios u ON m.id_usuario = u.id_usuario
+        INNER JOIN tipos_movimiento tm ON m.id_tipo_movimiento = tm.id_tipo_movimiento
+        WHERE tm.nombre = 'SALIDA'
+    `;
+
+    const params = [];
+
+    if (fechaDesde) {
+        sql += " AND DATE(m.fecha_movimiento) >= ?";
+        params.push(fechaDesde);
+    }
+
+    if (fechaHasta) {
+        sql += " AND DATE(m.fecha_movimiento) <= ?";
+        params.push(fechaHasta);
+    }
+
+    sql += " ORDER BY m.fecha_movimiento DESC";
+
+    db.query(sql, params, async (err, results) => {
+        if (err) {
+            console.error("Error al obtener datos para Excel:", err);
+            return res.status(500).json({
+                success: false,
+                error: "Error al generar reporte Excel",
+            });
+        }
+
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Reporte de Ventas');
+
+            // Agregar headers
+            worksheet.columns = [
+                { header: 'ID', key: 'id', width: 10 },
+                { header: 'Fecha', key: 'fecha', width: 15 },
+                { header: 'Código Producto', key: 'codigo', width: 15 },
+                { header: 'Producto', key: 'producto', width: 30 },
+                { header: 'Cantidad', key: 'cantidad', width: 12 },
+                { header: 'Precio Venta', key: 'precio', width: 15 },
+                { header: 'Total', key: 'total', width: 15 },
+                { header: 'Vendedor', key: 'vendedor', width: 20 },
+                { header: 'Rol', key: 'rol', width: 15 },
+                { header: 'Motivo', key: 'motivo', width: 25 }
+            ];
+
+            // Estilo para el header
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF1E40AF' }
+            };
+            worksheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
+
+            // Agregar datos
+            results.forEach(venta => {
+                const total = (parseFloat(venta.precio_venta) * venta.cantidad).toFixed(2);
+                const motivo = venta.motivo ? venta.motivo.replace('Venta: ', '') : 'No especificado';
+
+                worksheet.addRow({
+                    id: venta.id_movimiento,
+                    fecha: new Date(venta.fecha_movimiento).toLocaleDateString(),
+                    codigo: venta.codigo,
+                    producto: venta.producto_nombre,
+                    cantidad: venta.cantidad,
+                    precio: `$${parseFloat(venta.precio_venta).toFixed(2)}`,
+                    total: `$${total}`,
+                    vendedor: venta.nombre_usuario,
+                    rol: venta.rol,
+                    motivo: motivo
+                });
+            });
+
+            // Agregar fila de totales
+            const totalVentas = results.reduce((sum, venta) =>
+                sum + (parseFloat(venta.precio_venta) * venta.cantidad), 0);
+            const totalUnidades = results.reduce((sum, venta) => sum + venta.cantidad, 0);
+
+            worksheet.addRow({});
+            worksheet.addRow({
+                producto: 'TOTALES:',
+                cantidad: totalUnidades,
+                total: `$${totalVentas.toFixed(2)}`
+            });
+
+            // Configurar respuesta
+            const filename = `reporte-ventas-${new Date().toISOString().split('T')[0]}.xlsx`;
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+            await workbook.xlsx.write(res);
+            res.end();
+
+        } catch (error) {
+            console.error("Error al generar Excel:", error);
+            res.status(500).json({
+                success: false,
+                error: "Error al generar reporte Excel",
+            });
+        }
+    });
+});
+
+// =============================================
+// FUNCIONES AUXILIARES PARA GENERAR PDFs - CORREGIDAS
+// =============================================
+
+function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tipoMovimiento) {
+    // Header
+    doc.fontSize(20)
+        .font('Helvetica-Bold')
+        .fillColor('#1E40AF')
+        .text('REPORTE DE MOVIMIENTOS DE INVENTARIO', 50, 50, { align: 'center' });
+
+    doc.fontSize(12)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Distribuidora Martín - Sistema de Inventarios', 50, 80, { align: 'center' });
+
+    // Información del reporte
+    const fechaGeneracion = new Date().toLocaleDateString();
+    let periodo = 'Todo el período';
+    if (fechaDesde && fechaHasta) {
+        periodo = `Del ${fechaDesde} al ${fechaHasta}`;
+    }
+
+    let tipoFiltro = 'Todos los tipos';
+    if (tipoMovimiento && tipoMovimiento !== 'TODOS') {
+        tipoFiltro = tipoMovimiento;
+    }
+
+    doc.fontSize(10)
+        .fillColor('#333333')
+        .text(`Fecha de generación: ${fechaGeneracion}`, 50, 110)
+        .text(`Período: ${periodo}`, 50, 125)
+        .text(`Tipo de movimiento: ${tipoFiltro}`, 50, 140)
+        .text(`Total de movimientos: ${movimientos.length}`, 50, 155);
+
+    // Resumen de movimientos
+    const entradas = movimientos.filter(m => m.tipo_movimiento === 'ENTRADA');
+    const salidas = movimientos.filter(m => m.tipo_movimiento === 'SALIDA');
+    const totalEntradas = entradas.reduce((sum, m) => sum + m.cantidad, 0);
+    const totalSalidas = salidas.reduce((sum, m) => sum + m.cantidad, 0);
+    const valorEntradas = entradas.reduce((sum, m) => sum + parseFloat(m.valor_movimiento), 0);
+    const valorSalidas = salidas.reduce((sum, m) => sum + parseFloat(m.valor_movimiento), 0);
+
+    let y = 180;
+
+    doc.fontSize(9)
+        .font('Helvetica-Bold')
+        .text('RESUMEN:', 50, y);
+
+    y += 20;
+    doc.font('Helvetica')
+        .text(`Entradas: ${totalEntradas} unidades - $${valorEntradas.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.text(`Salidas: ${totalSalidas} unidades - $${valorSalidas.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.text(`Balance neto: ${totalEntradas - totalSalidas} unidades - $${(valorEntradas - valorSalidas).toFixed(2)}`, 60, y);
+
+    // Tabla de movimientos
+    y += 30;
+
+    // Headers de la tabla
+    doc.fontSize(8)
+        .font('Helvetica-Bold')
+        .fillColor('#FFFFFF')
+        .rect(50, y, 500, 15)
+        .fill('#1E40AF');
+
+    doc.text('Fecha', 55, y + 5);
+    doc.text('Tipo', 90, y + 5);
+    doc.text('Producto', 130, y + 5);
+    doc.text('Cantidad', 300, y + 5);
+    doc.text('Valor', 350, y + 5);
+    doc.text('Usuario', 400, y + 5);
+    doc.text('Motivo', 470, y + 5);
+
+    y += 20;
+
+    // Datos de la tabla
+    doc.font('Helvetica')
+        .fillColor('#333333');
+
+    movimientos.forEach((mov, index) => {
+        if (y > 700) {
+            doc.addPage();
+            y = 50;
+        }
+
+        // Fondo alternado
+        if (index % 2 === 0) {
+            doc.fillColor('#F8FAFC')
+                .rect(50, y, 500, 12)
+                .fill();
+        }
+
+        const fecha = new Date(mov.fecha_movimiento).toLocaleDateString();
+        const esEntrada = mov.tipo_movimiento === 'ENTRADA';
+
+        doc.fillColor(esEntrada ? '#059669' : '#DC2626')
+            .text(esEntrada ? 'ENTRADA' : 'SALIDA', 90, y + 3);
+
+        doc.fillColor('#333333')
+            .text(fecha, 55, y + 3)
+            .text(mov.producto_nombre, 130, y + 3, { width: 160, ellipsis: true })
+            .text(mov.cantidad.toString(), 300, y + 3)
+            .text(`$${parseFloat(mov.valor_movimiento).toFixed(2)}`, 350, y + 3)
+            .text(mov.nombre_usuario, 400, y + 3, { width: 65, ellipsis: true })
+            .text(mov.motivo || 'Sin motivo', 470, y + 3, { width: 75, ellipsis: true });
+
+        y += 15;
+    });
+
+    // Pie de página
+    doc.fontSize(8)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Sistema de Inventarios - Distribuidora Martín', 50, 750, { align: 'center' });
+}
+
+function generarReporteProductosMasVendidos(doc, productos, fechaDesde, fechaHasta, limite) {
+    // Header
+    doc.fontSize(20)
+        .font('Helvetica-Bold')
+        .fillColor('#1E40AF')
+        .text('PRODUCTOS MÁS VENDIDOS', 50, 50, { align: 'center' });
+
+    doc.fontSize(12)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Distribuidora Martín - Sistema de Inventarios', 50, 80, { align: 'center' });
+
+    // Información del reporte
+    const fechaGeneracion = new Date().toLocaleDateString();
+    let periodo = 'Todo el período';
+    if (fechaDesde && fechaHasta) {
+        periodo = `Del ${fechaDesde} al ${fechaHasta}`;
+    }
+
+    doc.fontSize(10)
+        .fillColor('#333333')
+        .text(`Fecha de generación: ${fechaGeneracion}`, 50, 110)
+        .text(`Período: ${periodo}`, 50, 125)
+        .text(`Límite: Top ${limite} productos`, 50, 140)
+        .text(`Total de productos: ${productos.length}`, 50, 155);
+
+    // Estadísticas generales - CONVERSIÓN SEGURA
+    const totalUnidades = productos.reduce((sum, p) => sum + parseInt(p.total_vendido), 0);
+    const totalIngresos = productos.reduce((sum, p) => sum + parseFloat(p.total_ingresos), 0);
+    const promedioVenta = productos.length > 0 ? totalUnidades / productos.length : 0;
+
+    let y = 180;
+
+    doc.fontSize(9)
+        .font('Helvetica-Bold')
+        .text('ESTADÍSTICAS GENERALES:', 50, y);
+
+    y += 20;
+    doc.font('Helvetica')
+        .text(`Total unidades vendidas: ${totalUnidades}`, 60, y);
+    y += 15;
+    doc.text(`Total ingresos: $${totalIngresos.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.text(`Promedio de ventas por producto: ${promedioVenta.toFixed(1)} unidades`, 60, y);
+
+    // Tabla de productos
+    y += 30;
+
+    // Headers de la tabla
+    doc.fontSize(8)
+        .font('Helvetica-Bold')
+        .fillColor('#FFFFFF')
+        .rect(50, y, 500, 15)
+        .fill('#1E40AF');
+
+    doc.text('#', 55, y + 5);
+    doc.text('Producto', 70, y + 5);
+    doc.text('Código', 200, y + 5);
+    doc.text('Unidades', 250, y + 5);
+    doc.text('Precio', 310, y + 5);
+    doc.text('Total', 360, y + 5);
+    doc.text('Ventas', 420, y + 5);
+    doc.text('Margen', 470, y + 5);
+
+    y += 20;
+
+    // Datos de la tabla - CONVERSIÓN SEGURA
+    doc.font('Helvetica')
+        .fillColor('#333333');
+
+    productos.forEach((producto, index) => {
+        if (y > 700) {
+            doc.addPage();
+            y = 50;
+        }
+
+        // Fondo alternado
+        if (index % 2 === 0) {
+            doc.fillColor('#F8FAFC')
+                .rect(50, y, 500, 15)
+                .fill();
+        }
+
+        // CONVERTIR A NÚMEROS DE FORMA SEGURA
+        const precioCompra = parseFloat(producto.precio_compra);
+        const precioVenta = parseFloat(producto.precio_venta);
+        const totalIngresosProd = parseFloat(producto.total_ingresos);
+        const margen = ((precioVenta - precioCompra) / precioCompra) * 100;
+        const posicion = index + 1;
+
+        // Número de posición
+        doc.fontSize(9)
+            .font('Helvetica-Bold')
+            .fillColor('#1E40AF')
+            .text(posicion.toString(), 55, y + 5);
+
+        // Datos del producto
+        doc.fontSize(8)
+            .font('Helvetica')
+            .fillColor('#333333')
+            .text(producto.nombre, 70, y + 5, { width: 120, ellipsis: true })
+            .text(producto.codigo, 200, y + 5)
+            .text(producto.total_vendido.toString(), 250, y + 5)
+            .text(`$${precioVenta.toFixed(2)}`, 310, y + 5)
+            .text(`$${totalIngresosProd.toFixed(2)}`, 360, y + 5)
+            .text(producto.total_ventas.toString(), 420, y + 5)
+            .text(`${margen.toFixed(1)}%`, 470, y + 5);
+
+        y += 18;
+    });
+
+    // Pie de página
+    doc.fontSize(8)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Sistema de Inventarios - Distribuidora Martín', 50, 750, { align: 'center' });
+}
+
+function generarReporteValorizacion(doc, productos) {
+    // Header
+    doc.fontSize(20)
+        .font('Helvetica-Bold')
+        .fillColor('#1E40AF')
+        .text('VALORIZACIÓN DE INVENTARIO', 50, 50, { align: 'center' });
+
+    doc.fontSize(12)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Distribuidora Martín - Sistema de Inventarios', 50, 80, { align: 'center' });
+
+    // Información del reporte
+    const fechaGeneracion = new Date().toLocaleDateString();
+
+    doc.fontSize(10)
+        .fillColor('#333333')
+        .text(`Fecha de generación: ${fechaGeneracion}`, 50, 110)
+        .text(`Fecha de corte: ${new Date().toLocaleDateString()}`, 50, 125);
+
+    // Estadísticas generales - CONVERSIÓN SEGURA
+    const totalProductos = productos.length;
+    const totalStock = productos.reduce((sum, p) => sum + parseInt(p.stock_actual), 0);
+    const totalValorCompra = productos.reduce((sum, p) => sum + parseFloat(p.valor_compra), 0);
+    const totalValorVenta = productos.reduce((sum, p) => sum + parseFloat(p.valor_venta), 0);
+    const gananciaPotencial = totalValorVenta - totalValorCompra;
+
+    let y = 150;
+
+    doc.fontSize(9)
+        .font('Helvetica-Bold')
+        .text('RESUMEN DEL INVENTARIO:', 50, y);
+
+    y += 20;
+    doc.font('Helvetica')
+        .text(`Total de productos en stock: ${totalProductos}`, 60, y);
+    y += 15;
+    doc.text(`Total unidades en inventario: ${totalStock}`, 60, y);
+    y += 15;
+    doc.text(`Valor total al costo: $${totalValorCompra.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.text(`Valor total al precio de venta: $${totalValorVenta.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.fillColor('#059669')
+        .text(`Ganancia potencial: $${gananciaPotencial.toFixed(2)}`, 60, y);
+
+    doc.fillColor('#333333');
+
+    // Tabla de productos
+    y += 30;
+
+    // Headers de la tabla
+    doc.fontSize(8)
+        .font('Helvetica-Bold')
+        .fillColor('#FFFFFF')
+        .rect(50, y, 500, 15)
+        .fill('#1E40AF');
+
+    doc.text('Producto', 55, y + 5);
+    doc.text('Código', 150, y + 5);
+    doc.text('Stock', 200, y + 5);
+    doc.text('Costo U.', 240, y + 5);
+    doc.text('Venta U.', 300, y + 5);
+    doc.text('Valor Costo', 360, y + 5);
+    doc.text('Valor Venta', 420, y + 5);
+    doc.text('Margen %', 480, y + 5);
+
+    y += 20;
+
+    // Datos de la tabla - CONVERSIÓN SEGURA
+    doc.font('Helvetica')
+        .fillColor('#333333');
+
+    productos.forEach((producto, index) => {
+        if (y > 700) {
+            doc.addPage();
+            y = 50;
+        }
+
+        // Fondo alternado
+        if (index % 2 === 0) {
+            doc.fillColor('#F8FAFC')
+                .rect(50, y, 500, 15)
+                .fill();
+        }
+
+        // CONVERTIR A NÚMEROS DE FORMA SEGURA
+        const precioCompra = parseFloat(producto.precio_compra);
+        const precioVenta = parseFloat(producto.precio_venta);
+        const valorCompra = parseFloat(producto.valor_compra);
+        const valorVenta = parseFloat(producto.valor_venta);
+        const margen = ((precioVenta - precioCompra) / precioCompra) * 100;
+
+        doc.fillColor('#333333')
+            .text(producto.nombre, 55, y + 5, { width: 85, ellipsis: true })
+            .text(producto.codigo, 150, y + 5)
+            .text(producto.stock_actual.toString(), 200, y + 5)
+            .text(`$${precioCompra.toFixed(2)}`, 240, y + 5)
+            .text(`$${precioVenta.toFixed(2)}`, 300, y + 5)
+            .text(`$${valorCompra.toFixed(2)}`, 360, y + 5)
+            .text(`$${valorVenta.toFixed(2)}`, 420, y + 5);
+
+        // Color del margen según el porcentaje
+        if (margen > 50) {
+            doc.fillColor('#059669');
+        } else if (margen > 25) {
+            doc.fillColor('#D97706');
+        } else {
+            doc.fillColor('#DC2626');
+        }
+
+        doc.text(`${margen.toFixed(1)}%`, 480, y + 5);
+
+        y += 18;
+    });
+
+    // Análisis adicional - CONVERSIÓN SEGURA
+    y += 20;
+    doc.fillColor('#333333')
+        .fontSize(9)
+        .font('Helvetica-Bold')
+        .text('ANÁLISIS:', 50, y);
+
+    y += 15;
+
+    // VERIFICAR SI HAY PRODUCTOS
+    if (productos.length > 0) {
+        const productoMayorValor = productos[0];
+        const productoMenorValor = productos[productos.length - 1];
+        const valorVentaMayor = parseFloat(productoMayorValor.valor_venta);
+        const valorVentaMenor = parseFloat(productoMenorValor.valor_venta);
+        const margenPromedio = productos.reduce((sum, p) => {
+            const precioCompra = parseFloat(p.precio_compra);
+            const precioVenta = parseFloat(p.precio_venta);
+            return sum + ((precioVenta - precioCompra) / precioCompra * 100);
+        }, 0) / productos.length;
+
+        doc.font('Helvetica')
+            .text(`• Producto de mayor valor: ${productoMayorValor.nombre} - $${valorVentaMayor.toFixed(2)}`, 60, y);
+        y += 12;
+        doc.text(`• Producto de menor valor: ${productoMenorValor.nombre} - $${valorVentaMenor.toFixed(2)}`, 60, y);
+        y += 12;
+        doc.text(`• Margen promedio: ${margenPromedio.toFixed(1)}%`, 60, y);
+    } else {
+        doc.font('Helvetica')
+            .text('• No hay productos en inventario para analizar', 60, y);
+    }
+
+    // Pie de página
+    doc.fontSize(8)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Sistema de Inventarios - Distribuidora Martín', 50, 750, { align: 'center' });
+}
+
+function generarReporteVentasPDF(doc, ventas, fechaDesde, fechaHasta) {
+    // Header
+    doc.fontSize(20)
+        .font('Helvetica-Bold')
+        .fillColor('#1E40AF')
+        .text('REPORTE DE VENTAS', 50, 50, { align: 'center' });
+
+    doc.fontSize(12)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Distribuidora Martín - Sistema de Inventarios', 50, 80, { align: 'center' });
+
+    // Información del reporte
+    const fechaGeneracion = new Date().toLocaleDateString();
+    let periodo = 'Todo el período';
+    if (fechaDesde && fechaHasta) {
+        periodo = `Del ${fechaDesde} al ${fechaHasta}`;
+    }
+
+    doc.fontSize(10)
+        .fillColor('#333333')
+        .text(`Fecha de generación: ${fechaGeneracion}`, 50, 110)
+        .text(`Período: ${periodo}`, 50, 125)
+        .text(`Total de ventas: ${ventas.length}`, 50, 140);
+
+    // Estadísticas
+    const totalUnidades = ventas.reduce((sum, v) => sum + v.cantidad, 0);
+    const totalIngresos = ventas.reduce((sum, v) => sum + (parseFloat(v.precio_venta) * v.cantidad), 0);
+
+    let y = 165;
+
+    doc.fontSize(9)
+        .font('Helvetica-Bold')
+        .text('ESTADÍSTICAS:', 50, y);
+
+    y += 20;
+    doc.font('Helvetica')
+        .text(`Total unidades vendidas: ${totalUnidades}`, 60, y);
+    y += 15;
+    doc.text(`Total ingresos: $${totalIngresos.toFixed(2)}`, 60, y);
+    y += 15;
+    doc.text(`Ticket promedio: $${ventas.length > 0 ? (totalIngresos / ventas.length).toFixed(2) : '0.00'}`, 60, y);
+
+    // Tabla de ventas
+    y += 30;
+
+    // Headers de la tabla
+    doc.fontSize(8)
+        .font('Helvetica-Bold')
+        .fillColor('#FFFFFF')
+        .rect(50, y, 500, 15)
+        .fill('#1E40AF');
+
+    doc.text('Fecha', 55, y + 5);
+    doc.text('Producto', 100, y + 5);
+    doc.text('Cantidad', 250, y + 5);
+    doc.text('Precio', 300, y + 5);
+    doc.text('Total', 350, y + 5);
+    doc.text('Vendedor', 420, y + 5);
+
+    y += 20;
+
+    // Datos de la tabla
+    doc.font('Helvetica')
+        .fillColor('#333333');
+
+    ventas.forEach((venta, index) => {
+        if (y > 700) {
+            doc.addPage();
+            y = 50;
+        }
+
+        // Fondo alternado
+        if (index % 2 === 0) {
+            doc.fillColor('#F8FAFC')
+                .rect(50, y, 500, 12)
+                .fill();
+        }
+
+        const fecha = new Date(venta.fecha_movimiento).toLocaleDateString();
+        const total = (parseFloat(venta.precio_venta) * venta.cantidad).toFixed(2);
+        const motivo = venta.motivo ? venta.motivo.replace('Venta: ', '') : 'Sin motivo';
+
+        doc.fillColor('#333333')
+            .text(fecha, 55, y + 3)
+            .text(venta.producto_nombre, 100, y + 3, { width: 140, ellipsis: true })
+            .text(venta.cantidad.toString(), 250, y + 3)
+            .text(`$${parseFloat(venta.precio_venta).toFixed(2)}`, 300, y + 3)
+            .text(`$${total}`, 350, y + 3)
+            .text(venta.nombre_usuario, 420, y + 3, { width: 75, ellipsis: true });
+
+        y += 15;
+    });
+
+    
+    // Pie de página
+    doc.fontSize(8)
+        .font('Helvetica')
+        .fillColor('#666666')
+        .text('Sistema de Inventarios - Distribuidora Martín', 50, 750, { align: 'center' });
+}
 
 module.exports = db;

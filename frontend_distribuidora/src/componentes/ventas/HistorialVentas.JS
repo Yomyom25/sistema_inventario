@@ -9,6 +9,7 @@ const HistorialVentas = () => {
   });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [generandoReporte, setGenerandoReporte] = useState(false);
 
   // Cargar ventas desde la API
   const cargarVentas = useCallback(async () => {
@@ -71,16 +72,116 @@ const HistorialVentas = () => {
     });
   };
 
-  const generarReporteProductosMasVendidos = () => {
-    alert('📊 Generando reporte de productos más vendidos...');
+  // Función genérica para descargar reportes PDF
+  const descargarReportePDF = async (endpoint, nombreReporte) => {
+    setGenerandoReporte(true);
+    try {
+      const params = new URLSearchParams();
+      
+      if (filtros.fechaDesde) {
+        params.append('fechaDesde', filtros.fechaDesde);
+      }
+      
+      if (filtros.fechaHasta) {
+        params.append('fechaHasta', filtros.fechaHasta);
+      }
+      
+      const url = `http://localhost:5000${endpoint}?${params.toString()}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error al generar ${nombreReporte}`);
+      }
+
+      // Crear blob y descargar
+      const blob = await response.blob();
+      const urlDescarga = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = urlDescarga;
+      
+      // Nombre del archivo basado en el tipo de reporte
+      const fecha = new Date().toISOString().split('T')[0];
+      link.download = `${nombreReporte.toLowerCase().replace(/\s+/g, '-')}-${fecha}.pdf`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(urlDescarga);
+
+    } catch (error) {
+      console.error(`Error al generar ${nombreReporte}:`, error);
+      alert(`Error al generar el reporte: ${error.message}`);
+    } finally {
+      setGenerandoReporte(false);
+    }
   };
 
-  const generarReporteValorizacionInventario = () => {
-    alert('💰 Generando reporte de valorización de inventario...');
+  // RF-006.1: Reporte de movimientos de inventario
+  const generarReporteMovimientosInventario = async () => {
+    await descargarReportePDF('/api/reportes/movimientos/pdf', 'Reporte Movimientos Inventario');
   };
 
-  const generarReporteMovimientosInventario = () => {
-    alert('📈 Generando reporte de movimientos de inventario...');
+  // RF-006.2: Reporte de productos más vendidos
+  const generarReporteProductosMasVendidos = async () => {
+    await descargarReportePDF('/api/reportes/productos-mas-vendidos/pdf', 'Reporte Productos Mas Vendidos');
+  };
+
+  // RF-006.3: Reporte de valorización de inventario
+  const generarReporteValorizacionInventario = async () => {
+    await descargarReportePDF('/api/reportes/valorizacion-inventario/pdf', 'Reporte Valorizacion Inventario');
+  };
+
+  // Reporte de ventas en PDF
+  const generarReporteVentasPDF = async () => {
+    await descargarReportePDF('/api/reportes/ventas/pdf', 'Reporte Ventas');
+  };
+
+  // Reporte de ventas en Excel
+  const generarReporteVentasExcel = async () => {
+    setGenerandoReporte(true);
+    try {
+      const params = new URLSearchParams();
+      
+      if (filtros.fechaDesde) {
+        params.append('fechaDesde', filtros.fechaDesde);
+      }
+      
+      if (filtros.fechaHasta) {
+        params.append('fechaHasta', filtros.fechaHasta);
+      }
+      
+      const url = `http://localhost:5000/api/reportes/ventas/excel?${params.toString()}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al generar reporte Excel');
+      }
+
+      const blob = await response.blob();
+      const urlDescarga = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = urlDescarga;
+      link.download = `reporte-ventas-${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(urlDescarga);
+
+    } catch (error) {
+      console.error('Error al generar Excel:', error);
+      alert(`Error al generar el reporte Excel: ${error.message}`);
+    } finally {
+      setGenerandoReporte(false);
+    }
   };
 
   const formatearFecha = (fecha) => {
@@ -91,7 +192,7 @@ const HistorialVentas = () => {
     <div className="pagina-historial-ventas">
       <div className="historial-ventas">
         <div className="historial-header">
-          <h2> Historial de Ventas</h2>
+          <h2>Historial de Ventas</h2>
           <p>Consulta todas las ventas registradas en el sistema</p>
         </div>
 
@@ -125,6 +226,7 @@ const HistorialVentas = () => {
               <button
                 onClick={limpiarFiltros}
                 className="btn-limpiar"
+                disabled={generandoReporte}
               >
                 Limpiar Filtros
               </button>
@@ -134,25 +236,42 @@ const HistorialVentas = () => {
 
         {/* Botones de Reportes */}
         <div className="reportes-section">
-          <h3>Reportes</h3>
+          <h3>Reportes {generandoReporte && '(Generando...)'}</h3>
           <div className="botones-reportes">
             <button
               onClick={generarReporteProductosMasVendidos}
               className="btn-reporte"
+              disabled={generandoReporte}
             >
-              📊 Productos Más Vendidos
+              {generandoReporte ? '⏳ Generando...' : '📊 Productos Más Vendidos'}
             </button>
             <button
               onClick={generarReporteValorizacionInventario}
               className="btn-reporte"
+              disabled={generandoReporte}
             >
-              💰 Valorización de Inventario
+              {generandoReporte ? '⏳ Generando...' : '💰 Valorización de Inventario'}
             </button>
             <button
               onClick={generarReporteMovimientosInventario}
               className="btn-reporte"
+              disabled={generandoReporte}
             >
-              📈 Movimientos de Inventario
+              {generandoReporte ? '⏳ Generando...' : '📈 Movimientos de Inventario'}
+            </button>
+            <button
+              onClick={generarReporteVentasPDF}
+              className="btn-reporte pdf"
+              disabled={generandoReporte}
+            >
+              {generandoReporte ? '⏳ Generando...' : '📄 Ventas (PDF)'}
+            </button>
+            <button
+              onClick={generarReporteVentasExcel}
+              className="btn-reporte excel"
+              disabled={generandoReporte}
+            >
+              {generandoReporte ? '⏳ Generando...' : '📊 Ventas (Excel)'}
             </button>
           </div>
         </div>
@@ -174,7 +293,12 @@ const HistorialVentas = () => {
           ) : error ? (
             <div className="sin-datos">
               <p>❌ Error al cargar el historial: {error}</p>
-              <button onClick={cargarVentas} className="btn-reporte" style={{ marginTop: '1rem' }}>
+              <button 
+                onClick={cargarVentas} 
+                className="btn-reporte" 
+                style={{ marginTop: '1rem' }}
+                disabled={generandoReporte}
+              >
                 Reintentar
               </button>
             </div>
