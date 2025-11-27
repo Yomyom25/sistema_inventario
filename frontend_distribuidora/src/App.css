@@ -123,6 +123,40 @@ body {
   flex: 1;
 }
 
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #1e40af;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Mejora las tarjetas del dashboard */
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.module-card {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.module-card:hover {
+  transform: translateX(5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .stat-value {
   font-size: 1.5rem;
   font-weight: 700;
@@ -229,6 +263,65 @@ body {
 
 .info-card i {
   font-size: 1.5rem;
+}
+
+/* LOADING STYLES */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+  flex-direction: column;
+  gap: 1rem;
+  background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%);
+  color: white;
+  border-radius: 16px;
+  margin: 2rem;
+  padding: 2rem;
+}
+
+.loading-container p {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error states */
+.error-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+  flex-direction: column;
+  gap: 1rem;
+  background: white;
+  border-radius: 16px;
+  margin: 2rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.error-container h2 {
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+}
+
+.error-container p {
+  color: #6b7280;
+  margin-bottom: 1rem;
 }
 
 /* RESPONSIVE */

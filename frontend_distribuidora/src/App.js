@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Login from './componentes/autenticacion/Login';
-import { isAuthenticated, getCurrentUser, verifySession, logout } from './utilidades/auth';
+import { isAuthenticated, getCurrentUser, logout, authFetch } from './utilidades/auth';
 import TablaProductos from './componentes/productos/TablaProductos';
 import TablaUsuarios from './componentes/usuarios/TablaUsuarios';
 import FormularioVentas from './componentes/ventas/FormularioVentas';
@@ -9,18 +9,77 @@ import HistorialVentas from './componentes/ventas/HistorialVentas';
 import './App.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
+// Componente wrapper para actualización automática
+const AutoRefreshWrapper = ({ children }) => {
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshCount(prev => prev + 1);
+    }, 300000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return React.cloneElement(children, { key: refreshCount });
+};
+
 // DASHBOARD VISUAL PARA ADMINISTRADOR
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const user = getCurrentUser();
   
   const [dashboardData, setDashboardData] = useState({
-    totalProductos: 156,
-    usuariosActivos: 24,
-    ventasHoy: 18,
-    ingresosHoy: 2450,
-    stockBajo: 7
+    totalProductos: 0,
+    usuariosActivos: 0,
+    ventasHoy: 0,
+    ingresosHoy: 0,
+    stockBajo: 0
   });
+  const [loading, setLoading] = useState(true);
+
+  // Obtener datos reales del dashboard
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        
+        // Obtener total productos
+        const productosRes = await authFetch('/productos');
+        const productosData = await productosRes.json();
+        
+        // Obtener usuarios activos
+        const usuariosRes = await authFetch('/usuarios');
+        const usuariosData = await usuariosRes.json();
+        
+        // Obtener ventas de hoy
+        const hoy = new Date().toISOString().split('T')[0];
+        const ventasRes = await authFetch(`/ventas/historial?fechaDesde=${hoy}`);
+        const ventasData = await ventasRes.json();
+
+        // Calcular datos
+        const totalProductos = productosData.data?.length || 0;
+        const usuariosActivos = usuariosData.data?.filter(u => u.estado === 'activo').length || 0;
+        const ventasHoy = ventasData.data?.length || 0;
+        const ingresosHoy = ventasData.data?.reduce((sum, venta) => sum + parseFloat(venta.total), 0) || 0;
+        const stockBajo = productosData.data?.filter(p => p.stock_actual < 10).length || 0;
+
+        setDashboardData({
+          totalProductos,
+          usuariosActivos,
+          ventasHoy,
+          ingresosHoy,
+          stockBajo
+        });
+      } catch (error) {
+        console.error('Error cargando datos del dashboard:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   const adminModules = [
     {
@@ -51,13 +110,6 @@ const AdminDashboard = () => {
       ruta: '/historial-ventas',
       color: '#dc2626'
     },
-    {
-      titulo: 'Reportes',
-      descripcion: 'Generar reportes detallados',
-      icono: '📈',
-      ruta: '/reportes',
-      color: '#d97706'
-    }
   ];
 
   const handleModuleClick = (ruta) => {
@@ -68,6 +120,15 @@ const AdminDashboard = () => {
     logout();
     navigate('/login');
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Cargando datos del dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
@@ -121,16 +182,6 @@ const AdminDashboard = () => {
           </div>
           
           <div className="stat-card">
-            <div className="stat-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <i className="fas fa-dollar-sign"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">${dashboardData.ingresosHoy}</div>
-              <div className="stat-label">Ingresos Hoy</div>
-            </div>
-          </div>
-          
-          <div className="stat-card">
             <div className="stat-icon" style={{ background: '#fee2e2', color: '#dc2626' }}>
               <i className="fas fa-exclamation-triangle"></i>
             </div>
@@ -177,7 +228,7 @@ const AdminDashboard = () => {
         <div className="info-card">
           <i className="fas fa-sync-alt" style={{ color: '#059669' }}></i>
           <div>
-            <h4>Actualizado hace 5 min</h4>
+            <h4>Actualizado</h4>
             <p>La información se actualiza automáticamente</p>
           </div>
         </div>
@@ -186,16 +237,79 @@ const AdminDashboard = () => {
   );
 };
 
-// DASHBOARD VISUAL PARA EMPLEADO - SOLO VENTAS
+// DASHBOARD VISUAL PARA EMPLEADO - SOLO VENTAS (VERSIÓN CORREGIDA)
 const EmployeeDashboard = () => {
   const navigate = useNavigate();
   const user = getCurrentUser();
   
   const [dashboardData, setDashboardData] = useState({
-    ventasHoy: 12,
-    ingresosHoy: 1850,
-    comisionHoy: 185
+    ventasHoy: 0,
+    ingresosHoy: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchEmployeeData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const hoy = new Date().toISOString().split('T')[0];
+        const ventasRes = await authFetch(`/ventas/historial?fechaDesde=${hoy}`);
+        
+        if (!mounted) return;
+
+        if (!ventasRes.ok) {
+          throw new Error(`Error ${ventasRes.status}: ${ventasRes.statusText}`);
+        }
+        
+        const ventasData = await ventasRes.json();
+
+        if (!ventasData.success) {
+          throw new Error(ventasData.error || 'Error al cargar ventas');
+        }
+
+        // Filtrar ventas del empleado actual
+        const misVentasHoy = ventasData.data?.filter(venta => 
+          venta.usuario?.nombre === user?.username
+        ) || [];
+
+        const ventasHoy = misVentasHoy.length;
+        const ingresosHoy = misVentasHoy.reduce((sum, venta) => {
+          const total = parseFloat(venta.total) || 0;
+          return sum + total;
+        }, 0);
+
+        setDashboardData({
+          ventasHoy,
+          ingresosHoy
+        });
+      } catch (error) {
+        console.error('Error cargando datos del empleado:', error);
+        if (mounted) {
+          setError(error.message);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    if (user) {
+      fetchEmployeeData();
+    } else {
+      setLoading(false);
+      setError('No se encontró información del usuario');
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.username]); // Solo se ejecuta cuando cambia el username
 
   const employeeModules = [
     {
@@ -222,6 +336,96 @@ const EmployeeDashboard = () => {
     logout();
     navigate('/login');
   };
+
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    // Forzar recarga llamando al efecto nuevamente
+    const hoy = new Date().toISOString().split('T')[0];
+    authFetch(`/ventas/historial?fechaDesde=${hoy}`)
+      .then(response => response.json())
+      .then(ventasData => {
+        if (ventasData.success) {
+          const misVentasHoy = ventasData.data?.filter(venta => 
+            venta.usuario?.nombre === user?.username
+          ) || [];
+
+          const ventasHoy = misVentasHoy.length;
+          const ingresosHoy = misVentasHoy.reduce((sum, venta) => {
+            const total = parseFloat(venta.total) || 0;
+            return sum + total;
+          }, 0);
+
+          setDashboardData({ ventasHoy, ingresosHoy });
+        }
+      })
+      .catch(error => {
+        setError(error.message);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  // Mostrar error
+  if (error) {
+    return (
+      <div className="dashboard-container">
+        <div className="dashboard-header">
+          <div className="header-content">
+            <h1 className="dashboard-title">¡Bienvenido, {user?.username || 'Empleado'}!</h1>
+            <p className="dashboard-subtitle">Panel de ventas - Empleado</p>
+          </div>
+          <button 
+            onClick={handleCerrarSesion}
+            className="logout-button"
+          >
+            <i className="fas fa-sign-out-alt"></i>
+            Cerrar Sesión
+          </button>
+        </div>
+
+        <div className="error-container">
+          <h2>Error al cargar datos</h2>
+          <p>{error}</p>
+          <button 
+            onClick={handleRetry}
+            className="logout-button"
+            style={{ background: '#059669' }}
+          >
+            <i className="fas fa-redo"></i>
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar loading
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <div className="dashboard-header">
+          <div className="header-content">
+            <h1 className="dashboard-title">¡Bienvenido, {user?.username || 'Empleado'}!</h1>
+            <p className="dashboard-subtitle">Panel de ventas - Empleado</p>
+          </div>
+          <button 
+            onClick={handleCerrarSesion}
+            className="logout-button"
+          >
+            <i className="fas fa-sign-out-alt"></i>
+            Cerrar Sesión
+          </button>
+        </div>
+
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Cargando datos de ventas...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
@@ -259,18 +463,8 @@ const EmployeeDashboard = () => {
               <i className="fas fa-dollar-sign"></i>
             </div>
             <div className="stat-content">
-              <div className="stat-value">${dashboardData.ingresosHoy}</div>
-              <div className="stat-label">Ingresos Hoy</div>
-            </div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-icon" style={{ background: '#d1fae5', color: '#059669' }}>
-              <i className="fas fa-chart-line"></i>
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">${dashboardData.comisionHoy}</div>
-              <div className="stat-label">Comisión Hoy</div>
+              <div className="stat-value">${dashboardData.ingresosHoy.toFixed(2)}</div>
+              <div className="stat-label">Ingresos en ventas de hoy</div>
             </div>
           </div>
         </div>
@@ -311,7 +505,7 @@ const EmployeeDashboard = () => {
         <div className="info-card">
           <i className="fas fa-sync-alt" style={{ color: '#059669' }}></i>
           <div>
-            <h4>Actualizado hace 5 min</h4>
+            <h4>Actualizado</h4>
             <p>La información se actualiza automáticamente</p>
           </div>
         </div>
@@ -342,13 +536,10 @@ const VentasPage = () => {
 
   const fetchProductos = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/productos', {
-        credentials: 'include'
-      });
+      const response = await authFetch('/productos');
       const data = await response.json();
       
       if (data.success) {
-        // Mapear datos de la API al formato que espera el componente
         const productosMapeados = data.data.map(p => ({
           id: p.id_producto,
           codigo: p.codigo,
@@ -369,17 +560,41 @@ const VentasPage = () => {
     }
   };
 
-  const handleGuardarVenta = (venta) => {
-    console.log('Venta registrada:', venta);
-    
-    // Actualizar stock del producto en el estado local
-    setProductos(prev => 
-      prev.map(p => 
-        p.id === venta.productoId 
-          ? { ...p, stock: p.stock - venta.cantidad }
-          : p
-      )
-    );
+  const handleGuardarVenta = async (venta) => {
+    try {
+      const response = await authFetch('/ventas', {
+        method: 'POST',
+        body: JSON.stringify({
+          productoId: venta.productoId,
+          cantidad: venta.cantidad,
+          fecha: venta.fecha,
+          motivo: venta.motivo
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('Venta registrada exitosamente:', data);
+        
+        // Actualizar stock del producto en el estado local
+        setProductos(prev => 
+          prev.map(p => 
+            p.id === venta.productoId 
+              ? { ...p, stock: p.stock - venta.cantidad }
+              : p
+          )
+        );
+
+        alert('Venta registrada exitosamente');
+      } else {
+        console.error('Error al registrar venta:', data.error);
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error de conexión:', error);
+      alert('Error de conexión al registrar la venta');
+    }
   };
 
   const handleCancelarVenta = () => {
@@ -387,7 +602,12 @@ const VentasPage = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Cargando productos...</div>;
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Cargando productos...</p>
+      </div>
+    );
   }
 
   return (
@@ -408,50 +628,75 @@ const HistorialVentasPage = () => (
   </div>
 );
 
-const ProtectedRoute = ({ children }) => {
-  const [authStatus, setAuthStatus] = useState('checking'); // 'checking', 'authenticated', 'unauthenticated'
+const ProtectedRoute = ({ children, requiredRole }) => {
+  const [authStatus, setAuthStatus] = useState('checking');
 
   useEffect(() => {
     const checkAuthentication = async () => {
-      // Primero verificar si hay usuario en localStorage
       if (!isAuthenticated()) {
         setAuthStatus('unauthenticated');
         return;
       }
 
-      // Luego verificar con el servidor
       try {
-        const user = await verifySession();
-        if (user) {
+        const response = await authFetch('/auth/verify');
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Verificar rol si se requiere
+          if (requiredRole && data.user.role !== requiredRole) {
+            setAuthStatus('unauthorized');
+            return;
+          }
+          
           setAuthStatus('authenticated');
         } else {
           setAuthStatus('unauthenticated');
         }
       } catch (error) {
         console.error('Error verificando autenticación:', error);
-        // En caso de error, permitir el acceso basado en localStorage
-        setAuthStatus('authenticated');
+        setAuthStatus('unauthenticated');
       }
     };
 
     checkAuthentication();
-  }, []);
+  }, [requiredRole]);
 
   if (authStatus === 'checking') {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh' 
-      }}>
-        <div>Cargando...</div>
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Verificando autenticación...</p>
       </div>
     );
   }
 
   if (authStatus === 'unauthenticated') {
     return <Navigate to="/login" replace />;
+  }
+
+  if (authStatus === 'unauthorized') {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        flexDirection: 'column',
+        gap: '1rem'
+      }}>
+        <h2>Acceso Denegado</h2>
+        <p>No tienes permisos para acceder a esta página.</p>
+        <button 
+          onClick={() => window.history.back()}
+          className="logout-button"
+          style={{ marginTop: '1rem' }}
+        >
+          Volver
+        </button>
+      </div>
+    );
   }
 
   return children;
@@ -470,20 +715,6 @@ const DashboardRedirect = () => {
 };
 
 function App() {
-  // Crear usuario automáticamente si no existe
-  useEffect(() => {
-    if (!localStorage.getItem('currentUser')) {
-      const defaultUser = {
-        username: 'admin',
-        role: 'Administrador',
-        email: 'admin@distribuidora.com',
-        id: 1
-      };
-      localStorage.setItem('currentUser', JSON.stringify(defaultUser));
-      console.log('✅ Usuario admin creado automáticamente');
-    }
-  }, []);
-
   return (
     <Router>
       <div className="App">
@@ -494,16 +725,18 @@ function App() {
           <Route 
             path="/admin-dashboard" 
             element={
-              <ProtectedRoute>
-                <AdminDashboard />
+              <ProtectedRoute requiredRole="Administrador">
+                <AutoRefreshWrapper>
+                  <AdminDashboard />
+                </AutoRefreshWrapper>
               </ProtectedRoute>
             } 
           />
           <Route 
             path="/employee-dashboard" 
             element={
-              <ProtectedRoute>
-                <EmployeeDashboard />
+              <ProtectedRoute requiredRole="Empleado">
+                <EmployeeDashboard /> {/* Sin AutoRefreshWrapper */}
               </ProtectedRoute>
             } 
           />
@@ -512,7 +745,7 @@ function App() {
           <Route 
             path="/productos" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole="Administrador">
                 <ProductosPage />
               </ProtectedRoute>
             } 
@@ -520,7 +753,7 @@ function App() {
           <Route 
             path="/usuarios" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole="Administrador">
                 <UsuariosPage />
               </ProtectedRoute>
             } 
@@ -546,7 +779,7 @@ function App() {
           <Route 
             path="/reportes" 
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole="Administrador">
                 <div className="page-container">
                   <h1>Reportes y Estadísticas</h1>
                   <p>Módulo en desarrollo - Próximamente disponible</p>
