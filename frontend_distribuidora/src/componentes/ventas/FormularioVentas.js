@@ -125,53 +125,31 @@ const FormularioVentas = ({
     setEnviando(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/ventas', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          productoId: formData.productoId,
-          cantidad: formData.cantidad,
-          fecha: formData.fecha,
-          motivo: formData.motivo
-        })
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Error al registrar la venta');
-      }
-      
-      const venta = {
-        ...data.venta,
-        usuario: usuarioActual,
-        tipo: 'venta',
-        fechaRegistro: new Date().toISOString(),
-        stockAnterior: productoSeleccionado.stock,
-        stockNuevo: data.nuevoStock,
-        total: data.venta.total
+      // Preparar datos de la venta
+      const ventaData = {
+        productoId: formData.productoId,
+        cantidad: parseInt(formData.cantidad),
+        fecha: formData.fecha,
+        motivo: formData.motivo
       };
 
-      onGuardarVenta(venta);
-      
-      // Mostrar mensaje de confirmación
-      alert(`✅ Venta registrada exitosamente\nProducto: ${productoSeleccionado.nombre}\nCantidad: ${formData.cantidad}\nTotal: $${venta.total}`);
-      
-      // Limpiar formulario
-      setFormData({
-        productoId: '',
-        cantidad: '',
-        fecha: new Date().toISOString().split('T')[0],
-        motivo: ''
-      });
-      setBusquedaProducto('');
-      setProductoSeleccionado(null);
+      // Llamar a la función del padre y esperar respuesta
+      const exito = await onGuardarVenta(ventaData);
+
+      if (exito) {
+        // Limpiar formulario solo si fue exitoso
+        setFormData({
+          productoId: '',
+          cantidad: '',
+          fecha: new Date().toISOString().split('T')[0],
+          motivo: ''
+        });
+        setBusquedaProducto('');
+        setProductoSeleccionado(null);
+      }
       
     } catch (error) {
-      console.error('Error al registrar venta:', error);
+      console.error('Error al procesar venta:', error);
       alert(`❌ Error: ${error.message}`);
     } finally {
       setEnviando(false);

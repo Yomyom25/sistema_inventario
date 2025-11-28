@@ -248,6 +248,9 @@ const EmployeeDashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // FIX: Extract username for dependency stability
+  const username = user?.username;
 
   useEffect(() => {
     let mounted = true;
@@ -274,7 +277,7 @@ const EmployeeDashboard = () => {
 
         // Filtrar ventas del empleado actual
         const misVentasHoy = ventasData.data?.filter(venta => 
-          venta.usuario?.nombre === user?.username
+          venta.usuario?.nombre === username
         ) || [];
 
         const ventasHoy = misVentasHoy.length;
@@ -299,7 +302,7 @@ const EmployeeDashboard = () => {
       }
     };
 
-    if (user) {
+    if (username) {
       fetchEmployeeData();
     } else {
       setLoading(false);
@@ -309,7 +312,7 @@ const EmployeeDashboard = () => {
     return () => {
       mounted = false;
     };
-  }, [user?.username]); // Solo se ejecuta cuando cambia el username
+  }, [username]); // Dependency is now stable primitive
 
   const employeeModules = [
     {
@@ -586,14 +589,25 @@ const VentasPage = () => {
           )
         );
 
-        alert('Venta registrada exitosamente');
+        // Calcular total para el alert
+        const producto = productos.find(p => p.id === venta.productoId);
+        const total = producto ? (producto.precioVenta * venta.cantidad).toFixed(2) : '0.00';
+        const nombreProducto = producto ? producto.nombre : 'Desconocido';
+
+        alert(`✅ Venta registrada exitosamente
+Producto: ${nombreProducto}
+Cantidad: ${venta.cantidad}
+Total: $${total}`);
+        return true;
       } else {
         console.error('Error al registrar venta:', data.error);
         alert(`Error: ${data.error}`);
+        return false;
       }
     } catch (error) {
       console.error('Error de conexión:', error);
       alert('Error de conexión al registrar la venta');
+      return false;
     }
   };
 

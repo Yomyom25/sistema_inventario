@@ -738,15 +738,36 @@ app.post("/api/ventas", requireAuth, (req, res) => {
     const { productoId, cantidad, fecha, motivo } = req.body;
     const userId = req.session.user.id;
 
+    // Log para debugging
+    console.log('📦 Datos recibidos para venta:', { productoId, cantidad, fecha, motivo, userId });
+
+    // Validar que los campos requeridos existan
     if (!productoId || !cantidad || !fecha) {
+        console.error('❌ Validación fallida - Datos faltantes:', { 
+            productoId: !!productoId, 
+            cantidad: !!cantidad, 
+            fecha: !!fecha 
+        });
         return res.status(400).json({
             success: false,
             error: "Faltan datos requeridos (producto, cantidad, fecha)",
         });
     }
 
+    // Validar y parsear productoId
+    const productoIdInt = parseInt(productoId);
+    if (isNaN(productoIdInt) || productoIdInt <= 0) {
+        console.error('❌ productoId inválido:', productoId);
+        return res.status(400).json({
+            success: false,
+            error: "El ID del producto no es válido",
+        });
+    }
+
+    // Validar y parsear cantidad
     const cantidadVenta = parseInt(cantidad);
     if (isNaN(cantidadVenta) || cantidadVenta <= 0) {
+        console.error('❌ Cantidad inválida:', cantidad);
         return res.status(400).json({
             success: false,
             error: "La cantidad debe ser un número mayor a 0",
@@ -756,7 +777,7 @@ app.post("/api/ventas", requireAuth, (req, res) => {
     // Iniciar transacción (simulada con callbacks anidados por falta de promesas/async-await en mysql2 básico)
     // 1. Verificar stock y obtener datos del producto
     const checkStockSql = "SELECT * FROM productos WHERE id_producto = ?";
-    db.query(checkStockSql, [productoId], (err, productResults) => {
+    db.query(checkStockSql, [productoIdInt], (err, productResults) => {
         if (err) {
             console.error("Error al verificar stock:", err);
             return res.status(500).json({ success: false, error: "Error de servidor" });
@@ -809,7 +830,7 @@ app.post("/api/ventas", requireAuth, (req, res) => {
                 `;
                 const motivoFinal = motivo ? `Venta: ${motivo}` : "Venta directa";
 
-                db.query(insertMovimientoSql, [productoId, userId, idTipoMovimiento, cantidadVenta, fecha, motivoFinal], (err, movResults) => {
+                db.query(insertMovimientoSql, [productoIdInt, userId, idTipoMovimiento, cantidadVenta, fecha, motivoFinal], (err, movResults) => {
                     if (err) {
                         console.error("Error al registrar movimiento:", err);
                         return res.status(500).json({ success: false, error: "Error al registrar la venta" });
@@ -817,7 +838,7 @@ app.post("/api/ventas", requireAuth, (req, res) => {
 
                     // 4. Actualizar stock del producto
                     const updateStockSql = "UPDATE productos SET stock_actual = stock_actual - ? WHERE id_producto = ?";
-                    db.query(updateStockSql, [cantidadVenta, productoId], (err, updateResults) => {
+                    db.query(updateStockSql, [cantidadVenta, productoIdInt], (err, updateResults) => {
                         if (err) {
                             console.error("Error al actualizar stock:", err);
                             // Nota: En un sistema real, aquí deberíamos hacer rollback del movimiento
@@ -825,6 +846,11 @@ app.post("/api/ventas", requireAuth, (req, res) => {
                         }
 
                         // 5. Responder éxito
+                        console.log('✅ Venta registrada exitosamente:', {
+                            productoId: productoIdInt,
+                            cantidad: cantidadVenta,
+                            nuevoStock: producto.stock_actual - cantidadVenta
+                        });
                         res.json({
                             success: true,
                             message: "Venta registrada exitosamente",
