@@ -919,7 +919,7 @@ app.get("/api/ventas/historial", requireAuth, (req, res) => {
 });
 
 // =============================================
-// ENDPOINTS DE REPORTES (PROTEGIDOS) - CORREGIDOS
+// ENDPOINTS DE REPORTES (PROTEGIDOS) - MEJORADOS
 // =============================================
 
 // RF-006.1: Reporte de movimientos de inventario por rango de fechas
@@ -1266,8 +1266,39 @@ app.get("/api/reportes/ventas/excel", requireAuth, async (req, res) => {
 });
 
 // =============================================
-// FUNCIONES AUXILIARES PARA GENERAR PDFs - CORREGIDAS
+// FUNCIONES AUXILIARES PARA GENERAR PDFs - MEJORADAS
 // =============================================
+
+// Función auxiliar para texto multilínea
+function drawMultilineText(doc, text, x, y, maxWidth, maxHeight, lineHeight = 9) {
+    const words = text.split(' ');
+    let line = '';
+    let lines = [];
+    let currentY = y;
+
+    for (let i = 0; i < words.length; i++) {
+        const testLine = line + words[i] + ' ';
+        const testWidth = doc.widthOfString(testLine);
+        
+        if (testWidth > maxWidth && i > 0) {
+            lines.push(line);
+            line = words[i] + ' ';
+        } else {
+            line = testLine;
+        }
+    }
+    lines.push(line);
+
+    // Dibujar máximo 2 líneas
+    const linesToDraw = lines.slice(0, 2);
+    linesToDraw.forEach((lineText, idx) => {
+        if (currentY + (idx * lineHeight) <= y + maxHeight - lineHeight) {
+            doc.text(lineText.trim(), x, currentY + (idx * lineHeight), { width: maxWidth });
+        }
+    });
+
+    return lines.length > 2 ? '...' : '';
+}
 
 function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tipoMovimiento) {
     // Header
@@ -1325,7 +1356,7 @@ function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tip
     // Tabla de movimientos
     y += 30;
 
-    // Headers de la tabla
+    // Headers de la tabla - MEJORADO: Tipo movido más a la derecha
     doc.fontSize(8)
         .font('Helvetica-Bold')
         .fillColor('#FFFFFF')
@@ -1333,8 +1364,8 @@ function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tip
         .fill('#1E40AF');
 
     doc.text('Fecha', 55, y + 5);
-    doc.text('Tipo', 90, y + 5);
-    doc.text('Producto', 130, y + 5);
+    doc.text('Tipo', 120, y + 5); // MOVIDO DE 90 A 120
+    doc.text('Producto', 160, y + 5);
     doc.text('Cantidad', 300, y + 5);
     doc.text('Valor', 350, y + 5);
     doc.text('Usuario', 400, y + 5);
@@ -1342,7 +1373,7 @@ function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tip
 
     y += 20;
 
-    // Datos de la tabla
+    // Datos de la tabla - MEJORADO: Altura aumentada para multilínea
     doc.font('Helvetica')
         .fillColor('#333333');
 
@@ -1352,28 +1383,35 @@ function generarReporteMovimientos(doc, movimientos, fechaDesde, fechaHasta, tip
             y = 50;
         }
 
+        // AUMENTAR ALTURA DE FILA PARA TEXTO MULTILÍNEA
+        const rowHeight = 18; // Aumentado de 12 a 18 para permitir 2 líneas
+
         // Fondo alternado
         if (index % 2 === 0) {
             doc.fillColor('#F8FAFC')
-                .rect(50, y, 500, 12)
+                .rect(50, y, 500, rowHeight)
                 .fill();
         }
 
         const fecha = new Date(mov.fecha_movimiento).toLocaleDateString();
         const esEntrada = mov.tipo_movimiento === 'ENTRADA';
 
+        // TIPO DE MOVIMIENTO - MOVIDO MÁS A LA DERECHA
         doc.fillColor(esEntrada ? '#059669' : '#DC2626')
-            .text(esEntrada ? 'ENTRADA' : 'SALIDA', 90, y + 3);
+            .text(esEntrada ? 'ENTRADA' : 'SALIDA', 120, y + 5); // MOVIDO DE 90 A 120
 
         doc.fillColor('#333333')
-            .text(fecha, 55, y + 3)
-            .text(mov.producto_nombre, 130, y + 3, { width: 160, ellipsis: true })
-            .text(mov.cantidad.toString(), 300, y + 3)
-            .text(`$${parseFloat(mov.valor_movimiento).toFixed(2)}`, 350, y + 3)
-            .text(mov.nombre_usuario, 400, y + 3, { width: 65, ellipsis: true })
-            .text(mov.motivo || 'Sin motivo', 470, y + 3, { width: 75, ellipsis: true });
+            .text(fecha, 55, y + 5)
+            .text(mov.producto_nombre, 160, y + 5, { width: 130, ellipsis: true }) // Ajustado ancho
+            .text(mov.cantidad.toString(), 300, y + 5)
+            .text(`$${parseFloat(mov.valor_movimiento).toFixed(2)}`, 350, y + 5)
+            .text(mov.nombre_usuario, 400, y + 5, { width: 60, ellipsis: true });
 
-        y += 15;
+        // MOTIVO CON SOPORTE MULTILÍNEA
+        const motivoTexto = mov.motivo || 'Sin motivo';
+        drawMultilineText(doc, motivoTexto, 470, y + 5, 75, rowHeight);
+
+        y += rowHeight;
     });
 
     // Pie de página
@@ -1462,7 +1500,7 @@ function generarReporteProductosMasVendidos(doc, productos, fechaDesde, fechaHas
         // Fondo alternado
         if (index % 2 === 0) {
             doc.fillColor('#F8FAFC')
-                .rect(50, y, 500, 15)
+                .rect(50, y, 500, 18) // Aumentado para multilínea
                 .fill();
         }
 
@@ -1583,7 +1621,7 @@ function generarReporteValorizacion(doc, productos) {
         // Fondo alternado
         if (index % 2 === 0) {
             doc.fillColor('#F8FAFC')
-                .rect(50, y, 500, 15)
+                .rect(50, y, 500, 18) // Aumentado para multilínea
                 .fill();
         }
 
@@ -1718,7 +1756,7 @@ function generarReporteVentasPDF(doc, ventas, fechaDesde, fechaHasta) {
 
     y += 20;
 
-    // Datos de la tabla
+    // Datos de la tabla - MEJORADO: Altura aumentada para multilínea
     doc.font('Helvetica')
         .fillColor('#333333');
 
@@ -1728,26 +1766,30 @@ function generarReporteVentasPDF(doc, ventas, fechaDesde, fechaHasta) {
             y = 50;
         }
 
+        // AUMENTAR ALTURA DE FILA
+        const rowHeight = 18; // Aumentado de 12 a 18
+
         // Fondo alternado
         if (index % 2 === 0) {
             doc.fillColor('#F8FAFC')
-                .rect(50, y, 500, 12)
+                .rect(50, y, 500, rowHeight)
                 .fill();
         }
 
         const fecha = new Date(venta.fecha_movimiento).toLocaleDateString();
         const total = (parseFloat(venta.precio_venta) * venta.cantidad).toFixed(2);
-        const motivo = venta.motivo ? venta.motivo.replace('Venta: ', '') : 'Sin motivo';
 
         doc.fillColor('#333333')
-            .text(fecha, 55, y + 3)
-            .text(venta.producto_nombre, 100, y + 3, { width: 140, ellipsis: true })
-            .text(venta.cantidad.toString(), 250, y + 3)
-            .text(`$${parseFloat(venta.precio_venta).toFixed(2)}`, 300, y + 3)
-            .text(`$${total}`, 350, y + 3)
-            .text(venta.nombre_usuario, 420, y + 3, { width: 75, ellipsis: true });
+            .text(fecha, 55, y + 5)
+            // PRODUCTO CON SOPORTE MULTILÍNEA
+            .text(venta.producto_nombre, 100, y + 5, { width: 140, ellipsis: true })
+            .text(venta.cantidad.toString(), 250, y + 5)
+            .text(`$${parseFloat(venta.precio_venta).toFixed(2)}`, 300, y + 5)
+            .text(`$${total}`, 350, y + 5)
+            // VENDEDOR CON SOPORTE MULTILÍNEA
+            .text(venta.nombre_usuario, 420, y + 5, { width: 75, ellipsis: true });
 
-        y += 15;
+        y += rowHeight;
     });
 
     // Pie de página
